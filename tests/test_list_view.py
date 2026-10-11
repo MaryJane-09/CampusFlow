@@ -4,7 +4,7 @@ from io import StringIO
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
-from show_ticket_class import CampusFlow
+from campusflow.show_ticket import CampusFlow
 from campusflow.list_view import list_ticket, view_ticket
 
 
