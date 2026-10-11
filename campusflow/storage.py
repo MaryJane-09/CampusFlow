@@ -13,9 +13,12 @@ def load_json(campus: CampusFlow):
             
             seen_id = set()
             for record in existing_file:
-                record_id = record.get('ID')
+                
+                record_id = record.get("id", record.get("ID"))
+
                 if record_id is None or record_id == "":
                     raise ValueError("Missing ID field in record")
+
                 
                 if record_id in seen_id:
                     raise ValueError("Already exist")
