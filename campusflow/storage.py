@@ -1,5 +1,5 @@
 import json
-from show_ticket_class import CampusFlow
+from .show_ticket import CampusFlow
 
 def load_json(campus: CampusFlow):
     try:
@@ -21,9 +21,9 @@ def load_json(campus: CampusFlow):
                     raise ValueError("Already exist")
                 seen_id.add(record_id)
 
-            campus.ticket = existing_file
+            campus.tickets = existing_file
     except FileNotFoundError:
-        campus.ticket = []
+        campus.tickets = []
     except json.JSONDecodeError:
         raise ValueError("this file is malformed or invalid")
 
@@ -31,7 +31,7 @@ def load_json(campus: CampusFlow):
 def save_json(campus: CampusFlow):
     try:
         with open("ticket.json", "w") as file:
-            json.dump(campus.ticket, file, indent=4)
+            json.dump(campus.tickets, file, indent=4)
     except TypeError as e:
         raise TypeError(f"Failed to serialize ticket data to JSON. Original error: {e}") from e
     except OSError as e:
