@@ -1,4 +1,4 @@
-from show_ticket import campus
+from .show_ticket import campus
 import json
 import os
 
@@ -40,6 +40,5 @@ def WorkQueue():
     print("-" * 60)
     for ticket in sorted_tickets:
         assignee = ticket.get("assigned_to") or "Unassigned"
-        print(f"{ticket.get('id'):<6} {ticket.get('title'):<15} {ticket.get('priority'):<10} {ticket.get('status'):<12} {ticket.get(assignee):<15}")
-
+        print(f"{ticket.get('id'):<6} {ticket.get('title'):<15} {ticket.get('priority'):<10} {ticket.get('status'):<12} {assignee:<15}")
 
