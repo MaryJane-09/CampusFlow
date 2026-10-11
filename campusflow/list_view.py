@@ -1,11 +1,11 @@
-from show_ticket_class import CampusFlow
+from .show_ticket import CampusFlow
 
 def list_ticket(campus: CampusFlow):
-    if not campus.ticket:
+    if not campus.tickets:
         print("no ticteks recorded")
         return 
     
-    for ticket in campus.ticket:
+    for ticket in campus.tickets:
         print("ID: ", ticket.get('ID'))
         print("Title: ", ticket.get('title'))
         print("Category: ", ticket.get('category'))
