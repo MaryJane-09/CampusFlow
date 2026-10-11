@@ -1,10 +1,10 @@
-from show_ticket import campus
+from .show_ticket import campus
 import os
 import json
 
 FilePath = "ticket.json"
 
-def UpdateTicketStatus():
+def WorkFlow():
 
     if not os.path.exists(FilePath) or os.path.getsize(FilePath) == 0:
         print("Error: No tickets file found to edit.")
@@ -54,3 +54,6 @@ def UpdateTicketStatus():
 
     with open(FilePath, "w") as file:
         json.dump(campus.tickets, file, indent=4)
+
+if __name__ == "__main__":
+    WorkFlow()
