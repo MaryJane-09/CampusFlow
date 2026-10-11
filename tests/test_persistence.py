@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 from campusflow.storage import load_json, save_json
-from show_ticket_class import CampusFlow
+from campusflow.show_ticket import CampusFlow
 
 
 class TestCampusFlowPersistence(unittest.TestCase):
