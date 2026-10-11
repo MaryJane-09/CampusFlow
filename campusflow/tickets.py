@@ -7,7 +7,7 @@ FilePath = "ticket.json"
 
 @dataclass
 class Ticket:
-    id: str
+    ID: str
     title: str
     category: str
     urgency: str
@@ -37,7 +37,7 @@ def GenerateID(prefix="T"):
 
     numbers = []
     for ticket in campus.tickets:
-        tickets_id = ticket.get("id", "")
+        tickets_id = ticket.get("ID", "")
         try:
             numeric_part = int(tickets_id[1:])
             numbers.append(numeric_part)
@@ -83,7 +83,7 @@ def CreateTickets():
     ticket_id = GenerateID()
 
     tickets = Ticket(
-        id = ticket_id,
+        ID = ticket_id,
         title = title_input,
         category = category_input,
         urgency=urgency_input,
@@ -93,7 +93,7 @@ def CreateTickets():
     SaveTicket(tickets)
 
     print("\nTicket Created: ")
-    print(f"ID:             {tickets.id}")
+    print(f"ID:             {tickets.ID}")
     print(f"Title:          {tickets.title}")
     print(f"Category:       {tickets.category}")
     print(f"Urgency:        {tickets.urgency}")
@@ -120,7 +120,7 @@ def AssignTicket():
 
     target_ticket = None
     for ticket in campus.tickets:
-        if str(ticket.get("id")).upper() == ticket_id:
+        if str(ticket.get("ID")).upper() == ticket_id:
             target_ticket = ticket
             break
 
