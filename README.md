@@ -13,6 +13,18 @@ Developed F2 (List/View Tickets), F6 (Reports), and F7 (JSON Persistence). Also 
 ### 2. Chinaza Nzekwe:
  Developed F1 (Ticket Creation), F3 (Ticket Assignment), F4 (Ticket Workflow), and F5 (Priority Queue) and also contribute to the README documentation and tested the implemented features.
 
+ ***PR Links*** 
+
+https://github.com/MaryJane-09/CampusFlow/pull/7
+
+https://github.com/MaryJane-09/CampusFlow/pull/6
+
+https://github.com/MaryJane-09/CampusFlow/pull/10
+
+https://github.com/MaryJane-09/CampusFlow/pull/8
+
+https://github.com/MaryJane-09/CampusFlow/pull/1
+
  ### Python Version - python 3.12.3
 
  ### setup: 
