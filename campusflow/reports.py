@@ -13,20 +13,20 @@ def generate_report(campus: CampusFlow):
     total_medium = 0
     total_low = 0
     for ticket in campus.tickets:
-        if ticket.get('status') == "open":
+        if ticket.get('status').lower() == "open":
             total_open += 1
-        if ticket.get('status') == "in_progress":
+        if ticket.get('status').lower() == "in_progress":
             total_in_progress += 1
-        if ticket.get('status') == "resolved":
+        if ticket.get('status').lower() == "resolved":
             total_resolved += 1
 
-        if ticket.get('priority') == "critical":
+        if ticket.get('priority').lower() == "critical":
             total_critical += 1
-        if ticket.get('priority') == "high":
+        if ticket.get('priority').lower() == "high":
             total_high += 1
-        if ticket.get('priority') == "medium":
+        if ticket.get('priority').lower() == "medium":
             total_medium += 1
-        if ticket.get('priority') == "low":
+        if ticket.get('priority').lower() == "low":
             total_low += 1
 
     print("Open: ", total_open)
