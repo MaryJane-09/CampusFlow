@@ -3,7 +3,7 @@ import unittest
 from contextlib import redirect_stdout
 from io import StringIO
 
-from show_ticket_class import CampusFlow
+from campusflow.show_ticket import CampusFlow
 from campusflow.reports import generate_report
 
 
