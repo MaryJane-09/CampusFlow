@@ -1,5 +1,5 @@
 from dataclasses import asdict, dataclass
-from show_ticket import campus
+from .show_ticket import campus
 import os
 import json
 
@@ -101,4 +101,43 @@ def CreateTickets():
     print(f"Priority:       {tickets.priority}")
     print(f"Status:         {tickets.status}")
     print(f"Assigned To:    {tickets.assigned_to}")
-CreateTickets()
+
+
+def AssignTicket():
+    if not os.path.exists(FilePath) or os.path.getsize(FilePath) == 0:
+        print("Error: Tickets file is empty or missing.")
+        return
+
+    with open(FilePath, "r") as file:
+        campus.tickets = json.load(file)
+
+    ticket_id = input("Enter Ticket ID to assign (e.g., T001): ").strip().upper()
+    technician = input("Enter Technician Name: ").strip()
+
+    if not technician:
+        print("Error: Technician name cannot be blank.")
+        return
+
+    target_ticket = None
+    for ticket in campus.tickets:
+        if str(ticket.get("id")).upper() == ticket_id:
+            target_ticket = ticket
+            break
+
+    if not target_ticket:
+        print(f"Error: Ticket {ticket_id} not found.")
+        return
+    
+    if str(target_ticket.get("status", "")).lower().strip() == "resolved":
+        print("Error: Reopen the ticket before assigning it.")
+        return
+
+
+    target_ticket["assigned_to"] = technician
+
+    with open(FilePath, "w") as file:
+        json.dump(campus.tickets, file, indent=4)
+    print("Changes saved successfully!")
+
+if __name__ == "__main__":
+    CreateTickets()

@@ -1,0 +1,22 @@
+[
+    {
+        "id": "T001",
+        "title": "fggh",
+        "category": "network",
+        "urgency": "low",
+        "affected_users": 12,
+        "priority": "High",
+        "status": "Open",
+        "assigned_to": "None"
+    },
+    {
+        "id": "T002",
+        "title": "Campus Wi-Fi is down",
+        "category": "network",
+        "urgency": "medium",
+        "affected_users": 12,
+        "priority": "High",
+        "status": "Open",
+        "assigned_to": "None"
+    }
+]
