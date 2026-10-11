@@ -28,7 +28,7 @@ def WorkQueue():
         active_tickets,
         key=lambda ticket: (
             priority_order.get(str(ticket.get("priority", "")).lower().strip(), 4),
-            int(str(ticket.get("id", "T0"))[1:])
+            int(str(ticket.get("id", ticket.get("ID", "T0")))[1:])
         )
     )
 
@@ -45,7 +45,7 @@ def WorkQueue():
             assignee = "Unassigned"
 
         print(
-            f"{ticket.get('id'):<6} "
+            f"{ticket.get('id', ticket.get('ID')):<6} "
             f"{ticket.get('title'):<15} "
             f"{ticket.get('priority'):<10} "
             f"{ticket.get('status'):<12} "
@@ -65,7 +65,7 @@ def WorkFlow():
     target_ticket = None
 
     for ticket in campus.tickets:
-        if ticket.get("id") == ticket_id:
+        if str(ticket.get("id", ticket.get("ID", ""))).upper() == ticket_id.strip().upper():
             target_ticket = ticket
             break
 
@@ -74,7 +74,7 @@ def WorkFlow():
         return
 
     new_status = input("Ticket Status: ").lower().strip()
-    current_status = target_ticket.get("status")
+    current_status = str(target_ticket.get("status", "")).lower().strip()
 
     if current_status == "open" and new_status == "open":
         print("Ticket is already open")
