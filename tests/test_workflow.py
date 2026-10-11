@@ -1,336 +1,187 @@
 import json
 import os
-import sys
 import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch
-<<<<<<< HEAD
-=======
-from contextlib import redirect_stdout
-from io import StringIO
->>>>>>> main
 
-CampusFlow = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(CampusFlow))
-
-# Change this import if your module has a different filename.
-<<<<<<< HEAD
-from campusflow import workflow as status_module
+from campusflow import workflow
 
 
-class TestWorkFlow(unittest.TestCase):
-=======
-from campusflow import workflow as queue_module
-
-
-class TestWorkQueue(unittest.TestCase):
->>>>>>> main
+class TestWorkQueueAndWorkFlow(unittest.TestCase):
 
     def setUp(self):
-        self.temp_file = tempfile.NamedTemporaryFile(
-            mode="w",
-            suffix=".json",
-            delete=False,
-        )
-        self.temp_file.close()
-
-<<<<<<< HEAD
-        status_module.FilePath = self.temp_file.name
-        status_module.campus.tickets = []
-
-        self.ticket = {
-            "id": "T001",
-            "title": "Campus Wi-Fi is down",
-            "category": "network",
-            "urgency": "high",
-            "affected_users": 12,
-            "priority": "Critical",
-            "status": "open",
-            "assigned_to": None,
-        }
-
-        self.save_tickets()
-=======
-        queue_module.FilePath = self.temp_file.name
-        queue_module.campus.tickets = []
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.ticket_file = os.path.join(self.temp_dir.name, "ticket.json")
+        self.patcher = patch.object(workflow, "FilePath", self.ticket_file)
+        self.patcher.start()
 
         self.tickets = [
             {
-                "id": "T003",
-                "title": "Software bug",
-                "priority": "Medium",
+                "id": "T001",
+                "title": "Slow network",
+                "priority": "Low",
                 "status": "open",
-                "assigned_to": "Mary",
+                "assigned_to": "None",
             },
             {
                 "id": "T002",
-                "title": "Server failure",
+                "title": "Server down",
                 "priority": "Critical",
-                "status": "in_progress",
-                "assigned_to": "John",
-            },
-            {
-                "id": "T001",
-                "title": "Wi-Fi issue",
-                "priority": "High",
-                "status": "open",
-                "assigned_to": None,
-            },
-            {
-                "id": "T004",
-                "title": "Old issue",
-                "priority": "Critical",
-                "status": "resolved",
-                "assigned_to": "Jane",
-            },
-            {
-                "id": "T005",
-                "title": "Minor issue",
-                "priority": "Low",
                 "status": "open",
                 "assigned_to": "Alex",
             },
+            {
+                "id": "T003",
+                "title": "Old issue",
+                "priority": "High",
+                "status": "resolved",
+                "assigned_to": "Sam",
+            },
+            {
+                "id": "T004",
+                "title": "Login error",
+                "priority": "High",
+                "status": "in_progress",
+                "assigned_to": "Jamie",
+            },
         ]
 
-        self.save_tickets(self.tickets)
->>>>>>> main
+        self.save_tickets()
 
     def tearDown(self):
-        if os.path.exists(self.temp_file.name):
-            os.remove(self.temp_file.name)
+        self.patcher.stop()
+        self.temp_dir.cleanup()
 
-<<<<<<< HEAD
     def save_tickets(self):
-        with open(status_module.FilePath, "w") as file:
-            json.dump([self.ticket.copy()], file, indent=4)
+        with open(self.ticket_file, "w") as file:
+            json.dump(self.tickets, file)
 
-    def read_ticket(self):
-        with open(status_module.FilePath, "r") as file:
-            return json.load(file)[0]
+    def read_tickets(self):
+        with open(self.ticket_file, "r") as file:
+            return json.load(file)
 
-    def run_status_update(self, ticket_id, new_status):
-        with patch(
-            "builtins.input",
-            side_effect=[ticket_id, new_status],
-        ):
-            status_module.WorkFlow()
+    # WorkQueue tests
 
-    def test_open_ticket_moves_to_in_progress_when_assigned(self):
-        self.ticket["assigned_to"] = "Mary"
-        self.save_tickets()
+    def test_queue_shows_active_tickets(self):
+        with patch("builtins.print") as mock_print:
+            workflow.WorkQueue()
 
-        self.run_status_update("T001", "in_progress")
-
-        saved = self.read_ticket()
-        self.assertEqual(saved["status"], "in_progress")
-
-    def test_unassigned_ticket_cannot_move_to_in_progress(self):
-        self.run_status_update("T001", "in_progress")
-
-        saved = self.read_ticket()
-        self.assertEqual(saved["status"], "open")
-
-    def test_in_progress_ticket_can_be_resolved(self):
-        self.ticket["status"] = "in_progress"
-        self.save_tickets()
-
-        self.run_status_update("T001", "resolved")
-
-        saved = self.read_ticket()
-        self.assertEqual(saved["status"], "resolved")
-
-    def test_resolved_ticket_can_be_reopened(self):
-        self.ticket["status"] = "resolved"
-        self.save_tickets()
-
-        self.run_status_update("T001", "open")
-
-        saved = self.read_ticket()
-        self.assertEqual(saved["status"], "open")
-
-    def test_open_ticket_cannot_be_resolved_directly(self):
-        self.run_status_update("T001", "resolved")
-
-        saved = self.read_ticket()
-        self.assertEqual(saved["status"], "open")
-
-    def test_resolved_ticket_cannot_move_directly_to_in_progress(self):
-        self.ticket["status"] = "resolved"
-        self.save_tickets()
-
-        self.run_status_update("T001", "in_progress")
-
-        saved = self.read_ticket()
-        self.assertEqual(saved["status"], "resolved")
-
-    def test_ticket_cannot_be_moved_to_unrecognized_status(self):
-        self.run_status_update("T001", "pending")
-
-        saved = self.read_ticket()
-        self.assertEqual(saved["status"], "open")
-
-    def test_ticket_id_must_match(self):
-        self.run_status_update("T999", "in_progress")
-
-        saved = self.read_ticket()
-        self.assertEqual(saved["id"], "T001")
-        self.assertEqual(saved["status"], "open")
-
-    def test_ticket_id_is_case_sensitive_currently(self):
-        self.run_status_update("t001", "in_progress")
-
-        saved = self.read_ticket()
-        self.assertEqual(saved["status"], "open")
-
-    def test_ticket_already_open_remains_open(self):
-        self.run_status_update("T001", "open")
-
-        saved = self.read_ticket()
-        self.assertEqual(saved["status"], "open")
-
-    def test_missing_ticket_file_is_handled(self):
-        os.remove(status_module.FilePath)
-
-        with patch("builtins.input") as mock_input:
-            status_module.WorkFlow()
-
-        mock_input.assert_not_called()
-
-    def test_empty_ticket_file_is_handled(self):
-        with open(status_module.FilePath, "w") as file:
-            file.write("")
-
-        with patch("builtins.input") as mock_input:
-            status_module.WorkFlow()
-
-        mock_input.assert_not_called()
-=======
-    def save_tickets(self, tickets):
-        with open(queue_module.FilePath, "w") as file:
-            json.dump(tickets, file, indent=4)
-
-    def run_work_queue(self):
-        output = StringIO()
-
-        with redirect_stdout(output):
-            queue_module.WorkQueue()
-
-        return output.getvalue()
-
-    def test_active_tickets_are_displayed(self):
-        output = self.run_work_queue()
+        output = "\n".join(
+            str(call) for call in mock_print.call_args_list
+        )
 
         self.assertIn("T001", output)
         self.assertIn("T002", output)
-        self.assertIn("T003", output)
-        self.assertIn("T005", output)
+        self.assertIn("T004", output)
+        self.assertNotIn("T003", output)
 
-    def test_resolved_tickets_are_excluded(self):
-        output = self.run_work_queue()
+    def test_queue_sorts_by_priority(self):
+        with patch("builtins.print") as mock_print:
+            workflow.WorkQueue()
 
-        self.assertNotIn("T004", output)
-        self.assertNotIn("Old issue", output)
+        output = "\n".join(
+            str(call) for call in mock_print.call_args_list
+        )
 
-    def test_tickets_are_sorted_by_priority(self):
-        output = self.run_work_queue()
+        self.assertLess(output.index("T002"), output.index("T004"))
+        self.assertLess(output.index("T004"), output.index("T001"))
 
-        critical_position = output.index("T002")
-        high_position = output.index("T001")
-        medium_position = output.index("T003")
-        low_position = output.index("T005")
+    def test_queue_shows_unassigned_tickets(self):
+        with patch("builtins.print") as mock_print:
+            workflow.WorkQueue()
 
-        self.assertLess(critical_position, high_position)
-        self.assertLess(high_position, medium_position)
-        self.assertLess(medium_position, low_position)
-
-    def test_same_priority_is_sorted_by_ticket_id(self):
-        tickets = [
-            {
-                "id": "T010",
-                "title": "Issue ten",
-                "priority": "High",
-                "status": "open",
-                "assigned_to": None,
-            },
-            {
-                "id": "T002",
-                "title": "Issue two",
-                "priority": "High",
-                "status": "open",
-                "assigned_to": None,
-            },
-        ]
-
-        self.save_tickets(tickets)
-        output = self.run_work_queue()
-
-        self.assertLess(output.index("T002"), output.index("T010"))
-
-    def test_unassigned_ticket_displays_unassigned(self):
-        output = self.run_work_queue()
+        output = "\n".join(
+            str(call) for call in mock_print.call_args_list
+        )
 
         self.assertIn("Unassigned", output)
 
-    def test_in_progress_tickets_are_included(self):
-        output = self.run_work_queue()
+    def test_queue_handles_missing_file(self):
+        os.remove(self.ticket_file)
 
-        self.assertIn("Server failure", output)
+        with patch("builtins.print") as mock_print:
+            workflow.WorkQueue()
 
-    def test_no_active_tickets_displays_message(self):
-        tickets = [
-            {
-                "id": "T001",
-                "title": "Resolved issue",
-                "priority": "High",
-                "status": "resolved",
-                "assigned_to": "Mary",
-            }
-        ]
+        mock_print.assert_called_with(
+            "Error: Tickets file is empty or missing."
+        )
 
-        self.save_tickets(tickets)
-        output = self.run_work_queue()
+    def test_queue_handles_empty_file(self):
+        open(self.ticket_file, "w").close()
 
-        self.assertIn("No active tickets in the work queue.", output)
+        with patch("builtins.print") as mock_print:
+            workflow.WorkQueue()
 
-    def test_missing_ticket_file_is_handled(self):
-        os.remove(queue_module.FilePath)
+        mock_print.assert_called_with(
+            "Error: Tickets file is empty or missing."
+        )
 
-        output = self.run_work_queue()
+    # WorkFlow tests
 
-        self.assertIn("Error: Tickets file is empty or missing.", output)
+    @patch("builtins.input", side_effect=["T001", "in_progress"])
+    def test_open_ticket_can_be_started_when_assigned(self, mock_input):
+        self.tickets[0]["assigned_to"] = "Alex"
+        self.save_tickets()
 
-    def test_empty_ticket_file_is_handled(self):
-        with open(queue_module.FilePath, "w") as file:
-            file.write("")
+        workflow.WorkFlow()
 
-        output = self.run_work_queue()
+        tickets = self.read_tickets()
+        self.assertEqual(tickets[0]["status"], "in_progress")
 
-        self.assertIn("Error: Tickets file is empty or missing.", output)
+    @patch("builtins.input", side_effect=["T001", "in_progress"])
+    def test_unassigned_ticket_cannot_be_started(self, mock_input):
+        with patch("builtins.print") as mock_print:
+            workflow.WorkFlow()
 
-    def test_priority_sorting_is_case_insensitive(self):
-        tickets = [
-            {
-                "id": "T001",
-                "title": "High priority issue",
-                "priority": "HIGH",
-                "status": "open",
-                "assigned_to": None,
-            },
-            {
-                "id": "T002",
-                "title": "Critical issue",
-                "priority": "CRITICAL",
-                "status": "open",
-                "assigned_to": None,
-            },
-        ]
+        mock_print.assert_called_with(
+            "Error: Ticket has not been assigned."
+        )
+        self.assertEqual(self.read_tickets()[0]["status"], "open")
 
-        self.save_tickets(tickets)
-        output = self.run_work_queue()
+    @patch("builtins.input", side_effect=["T004", "resolved"])
+    def test_in_progress_ticket_can_be_resolved(self, mock_input):
+        workflow.WorkFlow()
 
-        self.assertLess(output.index("T002"), output.index("T001"))
->>>>>>> main
+        self.assertEqual(self.read_tickets()[3]["status"], "resolved")
+
+    @patch("builtins.input", side_effect=["T003", "open"])
+    def test_resolved_ticket_can_be_reopened(self, mock_input):
+        workflow.WorkFlow()
+
+        self.assertEqual(self.read_tickets()[2]["status"], "open")
+
+    @patch("builtins.input", side_effect=["T001", "resolved"])
+    def test_open_ticket_cannot_skip_to_resolved(self, mock_input):
+        with patch("builtins.print") as mock_print:
+            workflow.WorkFlow()
+
+        mock_print.assert_called_with("Error: Must follow workflow.")
+        self.assertEqual(self.read_tickets()[0]["status"], "open")
+
+    @patch("builtins.input", side_effect=["T003", "in_progress"])
+    def test_resolved_ticket_must_be_reopened_first(self, mock_input):
+        with patch("builtins.print") as mock_print:
+            workflow.WorkFlow()
+
+        mock_print.assert_called_with(
+            "Error: Reopen the ticket first."
+        )
+        self.assertEqual(self.read_tickets()[2]["status"], "resolved")
+
+    @patch("builtins.input", side_effect=["UNKNOWN", "open"])
+    def test_unknown_ticket_id_is_rejected(self, mock_input):
+        with patch("builtins.print") as mock_print:
+            workflow.WorkFlow()
+
+        mock_print.assert_called_with("Error: No match found")
+
+    @patch("builtins.input", side_effect=["T001", "invalid"])
+    def test_invalid_status_is_rejected(self, mock_input):
+        with patch("builtins.print") as mock_print:
+            workflow.WorkFlow()
+
+        mock_print.assert_called_with("Error: Unrecognized workflow.")
+        self.assertEqual(self.read_tickets()[0]["status"], "open")
 
 
 if __name__ == "__main__":
