@@ -10,6 +10,18 @@ To develop a simple, reliable, and organized ticket management system that impro
 ### 1. Andrew Otokpa: 
 Developed F2 (List/View Tickets), F6 (Reports), and F7 (JSON Persistence). Also wrote the README documentation and tested the implemented features.
 
+***PR Links***
+
+https://github.com/MaryJane-09/CampusFlow/pull/2
+
+https://github.com/MaryJane-09/CampusFlow/pull/9
+
+https://github.com/MaryJane-09/CampusFlow/pull/5
+
+https://github.com/MaryJane-09/CampusFlow/pull/3
+
+https://github.com/MaryJane-09/CampusFlow/pull/4
+
 ### 2. Chinaza Nzekwe:
  Developed F1 (Ticket Creation), F3 (Ticket Assignment), F4 (Ticket Workflow), and F5 (Priority Queue) and also contribute to the README documentation and tested the implemented features.
 
