@@ -1,32 +1,64 @@
-from datetime import timedelta, datetime
+from copy import deepcopy
+from datetime import datetime, timedelta, timezone
+
+
+SLA_MINUTES = {
+    "critical": 60,
+    "high": 240,
+    "medium": 1440,
+    "low": 2880,
+}
+
+
+def utc_time(value=None):
+    if value is None:
+        return datetime.now(timezone.utc)
+
+    if (
+        not isinstance(value, datetime)
+        or value.tzinfo is None
+        or value.utcoffset() is None
+    ):
+        raise ValueError("Time must be a timezone-aware datetime.")
+
+    return value.astimezone(timezone.utc)
+
 
 def calculate_due_at(priority, cycle_start):
-    if priority == "critical":
-        duration_minute = timedelta(minutes=60)
-    elif priority == "high":
-        duration_minute = timedelta(minutes=240)
-    elif priority == "medium":
-        duration_minute = timedelta(minutes=1440)
-    elif priority == "low":
-        duration_minute = timedelta(minutes=2880)
-    result = cycle_start + duration_minute
-    return result 
+    if not isinstance(priority, str):
+        raise ValueError("Priority must be text.")
+
+    priority = priority.strip().lower()
+
+    if priority not in SLA_MINUTES:
+        raise ValueError("Invalid ticket priority.")
+
+    cycle_start = utc_time(cycle_start)
+    return cycle_start + timedelta(minutes=SLA_MINUTES[priority])
 
 
 def is_overdue(ticket, now):
-    if ticket.get("status", "").strip().lower() == "resolved":
+    now = utc_time(now)
+    status = ticket["status"].strip().lower()
+
+    if status not in ("open", "in_progress", "resolved"):
+        raise ValueError("Invalid ticket status.")
+
+    if status == "resolved":
         return False
-    
-    due_at_str = ticket.get("due_at")
-    if not due_at_str:
-        return False
-        
-    deadline = datetime.fromisoformat(due_at_str)
-    
+
+    deadline = datetime.fromisoformat(ticket["due_at"])
+    deadline = utc_time(deadline)
+
     return now > deadline
 
 
 def escalate_overdue(tickets, events, now, actor, *, event_recorder):
+    now = utc_time(now)
+
+    if not isinstance(actor, str) or not actor.strip():
+        raise ValueError("Operator name cannot be empty.")
+
     newly_escalated = 0
     already_escalated = 0
 
@@ -34,28 +66,43 @@ def escalate_overdue(tickets, events, now, actor, *, event_recorder):
         if not is_overdue(ticket, now):
             continue
 
-        current_cycle = ticket["escalation_cycle"]
+        cycle = ticket["escalation_cycle"]
 
-        if ticket["escalated_cycle"] == current_cycle:
+        if ticket["escalated_cycle"] == cycle:
             already_escalated += 1
             continue
 
-        event = event_recorder(
-            events=events,
-            ticket_id=ticket["id"],
-            event_type="ESCALATE",
-            actor=actor,
-            before_status=ticket["status"],
-            after_status=ticket["status"],
-            details=f"Overdue escalation for SLA cycle {current_cycle}",
-            now=now,
-        )
+        old_ticket = deepcopy(ticket)
+        old_events = deepcopy(events)
 
-        if not isinstance(event, dict):
-            raise TypeError("Event recorder must return an event dictionary.")
+        try:
+            event = event_recorder(
+                ticket_id=ticket["ID"],
+                event_type="ESCALATE",
+                actor=actor.strip(),
+                before_status=ticket["status"],
+                after_status=ticket["status"],
+                details=f"Overdue escalation for SLA cycle {cycle}",
+                now=now,
+            )
 
-        events.append(event)
-        ticket["escalated_cycle"] = current_cycle
+            if not isinstance(event, dict):
+                raise TypeError("Recorder must return an event dictionary.")
+
+            if len(events) != len(old_events) + 1:
+                raise ValueError("Recorder must append exactly one event.")
+
+            if events[:-1] != old_events or events[-1] != event:
+                raise ValueError("Recorder changed existing history.")
+
+            ticket["escalated_cycle"] = cycle
+
+        except Exception:
+            ticket.clear()
+            ticket.update(old_ticket)
+            events[:] = old_events
+            raise
+
         newly_escalated += 1
 
     return {
