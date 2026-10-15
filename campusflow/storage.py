@@ -1,7 +1,7 @@
 import json
-from .show_ticket import CampusFlow
 import os
 
+from .validation import validate_data
 
 FilePath = "ticket.json"
 
@@ -36,22 +36,26 @@ def save_json(campus: CampusFlow):
   try:
     output_data = {
         "schema_version": 2,
-        "tickets": campus.tickets,
-        "events": campus.events,
+        "tickets": campus_instance.tickets,
+        "events": campus_instance.events,
     }
 
-    with open(temp_filename, "w") as file:
-      json.dump(output_data, file, indent=4)
-      file.flush()
-      os.fsync(file.fileno())
+    validate_data(data)
 
-    os.replace(temp_filename, target_filename)
+    target_file = os.fspath(FilePath)
+    temp_file = target_file + ".tmp"
 
-  except (TypeError, OSError):
-    if os.path.exists(temp_filename):
-      try:
-        os.remove(temp_filename)
-      except OSError:
-        pass
+    try:
+        with open(temp_file, "w", encoding="utf-8") as file:
+            json.dump(data, file, indent=4, allow_nan=False)
+            file.flush()
+            os.fsync(file.fileno())
 
-    raise
+        os.replace(temp_file, target_file)
+
+    finally:
+        if os.path.exists(temp_file):
+            try:
+                os.remove(temp_file)
+            except OSError:
+                pass
