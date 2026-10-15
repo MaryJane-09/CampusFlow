@@ -116,6 +116,17 @@ class TestWorkQueueAndWorkFlow(unittest.TestCase):
             "Error: Tickets file is empty or missing."
         )
 
+    def test_queue_handles_malformed_string_tickets(self):
+        """Ensure WorkQueue doesn't crash if rogue strings are mixed into the ticket list."""
+        self.tickets.append("rogue_malformed_string_fixture")
+        self.save_tickets()
+
+        with patch("builtins.print") as mock_print:
+            try:
+                workflow.WorkQueue()
+            except AttributeError as e:
+                self.fail(f"WorkQueue crashed due to unhandled non-dict item: {e}")
+
     # WorkFlow tests
 
     @patch("builtins.input", side_effect=["T001", "in_progress"])

@@ -2,9 +2,12 @@ from dataclasses import asdict, dataclass
 from .show_ticket import campus
 import os
 import json
+from copy import deepcopy
 from datetime import datetime, timezone
 from .sla import calculate_due_at
 from .duplicate import confirm_ticket_creation 
+from .storage import load_json, save_json
+from .history import record_event
 
 FilePath = "ticket.json"
 
@@ -20,42 +23,63 @@ class Ticket:
     updated_at: str
     due_at: str                       
     status: str = "Open"
-    assigned_to: str | None = "None"
+    assigned_to: str | None = None
     escalation_cycle: int = 0
     escalated_cycle: int | None = None
 
+
 def SaveTicket(tickets: Ticket):
-    if os.path.exists(FilePath) and os.path.getsize(FilePath) > 0:
-        try:
-            with open(FilePath, "r") as file:
-                campus.tickets = json.load(file)
-        except json.JSONDecodeError:
-            print("Warning: JSON file was corrupted.")
-            return
-    campus.tickets.append(asdict(tickets))
-    with open(FilePath, "w") as file:
-        json.dump(campus.tickets, file, indent=4)
+    try:
+        load_json(campus)
+
+        ticket_data = asdict(tickets)
+        campus.tickets.append(ticket_data)
+
+        record_event(
+            ticket_id=ticket_data.get("id", ticket_data.get("ID")),
+            event_type="CREATE",
+            actor="System",
+            before_status=None,
+            after_status=ticket_data.get("status", "open"),
+            details="Ticket created.",
+        )
+
+        save_json(campus)
+
+    except (ValueError, OSError, TypeError) as error:
+        print(f"Unable to save ticket: {error}")
+        return False
+
+    return True
+
+
 
 
 def GenerateID(prefix="T"):
-    if not os.path.exists(FilePath) or os.path.getsize(FilePath) == 0:
-        return f"{prefix}001"
-    with open(FilePath, "r") as file:
-        campus.tickets = json.load(file)
-
     numbers = []
+
     for ticket in campus.tickets:
-        tickets_id = ticket.get("ID", "")
-        try:
-            numeric_part = int(tickets_id[1:])
-            numbers.append(numeric_part)
-        except ValueError:
-            pass
+        if not isinstance(ticket, dict):
+            raise ValueError(
+                f"Invalid ticket data: expected a dictionary, "
+                f"got {type(ticket).__name__}"
+            )
 
-    max_num = max(numbers) if numbers else 0
-    max_num += 1
+        ticket_id = ticket.get("id", ticket.get("ID", ""))
 
-    return f"{prefix}{max_num:03d}"
+        if not isinstance(ticket_id, str) or not ticket_id.startswith(prefix):
+            raise ValueError(f"Unexpected ticket ID: {ticket_id}")
+
+        number = ticket_id[len(prefix):]
+
+        if not number.isascii() or not number.isdigit():
+            raise ValueError(f"Invalid ticket ID: {ticket_id}")
+
+        numbers.append(int(number))
+
+    next_number = max(numbers, default=0) + 1
+    return f"{prefix}{next_number:03d}"
+
 
 
 
@@ -119,7 +143,8 @@ def CreateTickets():
         escalation_cycle=0,
     )
 
-    SaveTicket(tickets)
+    if not SaveTicket(tickets):
+        return
 
     print("\nTicket Created:")
     print(f"ID:             {tickets.ID}")
@@ -136,41 +161,79 @@ def CreateTickets():
     print(f"SLA Cycle:      {tickets.escalation_cycle}")
 
 
-def AssignTicket():
-    if not os.path.exists(FilePath) or os.path.getsize(FilePath) == 0:
-        print("Error: Tickets file is empty or missing.")
-        return
 
-    with open(FilePath, "r") as file:
-        campus.tickets = json.load(file)
+def AssignTicket():
+    try:
+        load_json(campus)
+    except (ValueError, OSError) as error:
+        print(f"Unable to load tickets: {error}")
+        return
 
     ticket_id = input("Enter Ticket ID to assign (e.g., T001): ").strip().upper()
-    technician = input("Enter Technician Name: ").strip()
-
-    if not technician:
-        print("Error: Technician name cannot be blank.")
-        return
 
     target_ticket = None
     for ticket in campus.tickets:
-        if str(ticket.get("ID")).upper() == ticket_id:
+        if not isinstance(ticket, dict):
+            continue
+            
+        current_id = str(
+            ticket.get("id", ticket.get("ID", ""))
+        ).strip().upper()
+
+        if current_id == ticket_id:
             target_ticket = ticket
             break
 
-    if not target_ticket:
+    if target_ticket is None:
         print(f"Error: Ticket {ticket_id} not found.")
         return
-    
-    if str(target_ticket.get("status", "")).lower().strip() == "resolved":
+
+    if str(target_ticket.get("status", "")).strip().lower() == "resolved":
         print("Error: Reopen the ticket before assigning it.")
         return
 
+    technician = input("Enter Technician Name: ").strip()
+    if not technician:
+        print("Error: Technician name cannot be blank.")
+        return
+    actor = input("Enter your name (operator): ").strip()
 
-    target_ticket["assigned_to"] = technician
+    if not actor:
+        print("Error: Operator name cannot be blank.")
+        return
 
-    with open(FilePath, "w") as file:
-        json.dump(campus.tickets, file, indent=4)
-    print("Changes saved successfully!")
+    previous_assignee = target_ticket.get("assigned_to")
+    previous_updated_at = target_ticket.get("updated_at")
+    previous_events = deepcopy(campus.events)
+
+    try:
+        target_ticket["assigned_to"] = technician
+        target_ticket["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+        record_event(
+            ticket_id=target_ticket.get("id", target_ticket.get("ID")),
+            event_type="ASSIGN",
+            actor=actor,
+            before_status=target_ticket.get("status", "open"),
+            after_status=target_ticket.get("status", "open"),
+            details=f"Ticket assigned to {technician}.",
+        )
+
+        save_json(campus)
+
+    except (OSError, TypeError, ValueError) as error:
+        target_ticket["assigned_to"] = previous_assignee
+
+        if previous_updated_at is None:
+            target_ticket.pop("updated_at", None)
+        else:
+            target_ticket["updated_at"] = previous_updated_at
+
+        campus.events = previous_events
+        print(f"Assignment failed; changes rolled back: {error}")
+        return
+
+    print(f"Ticket {ticket_id} assigned to {technician}.")
 
 if __name__ == "__main__":
     CreateTickets()

@@ -1,25 +1,24 @@
 from datetime import datetime, timezone
 from .sla import is_overdue
-import json
-import os
 from .show_ticket import campus
+from .storage import load_json
 
 FilePath = "ticket.json"
 
 def SLAAttentionQueue():
-    if not os.path.exists(FilePath) or os.path.getsize(FilePath) == 0:
-        print("Error: Tickets file is empty or missing.")
+    try:
+        load_json(campus)
+    except (ValueError, OSError) as error:
+        print(f"Unable to load SLA data: {error}")
         return
-
-    with open(FilePath, "r") as file:
-        campus.tickets = json.load(file)
-
     now = datetime.now(timezone.utc)
 
-    unresolved_tickets = [
-        ticket for ticket in campus.tickets
-        if str(ticket.get("status", "")).lower().strip() in ("open", "in_progress")
-    ]
+    unresolved_tickets = []
+    for ticket in campus.tickets:
+        if not isinstance(ticket, dict):
+            continue
+        if str(ticket.get("status", "")).lower().strip() in ("open", "in_progress"):
+            unresolved_tickets.append(ticket)
 
     def sla_sort_key(ticket):
         # 1. Overdue status first (False/Not overdue = 0, True/Overdue = 1 -> inverted so overdue is 0)
@@ -35,7 +34,6 @@ def SLAAttentionQueue():
         else:
             due_time = datetime.max.replace(tzinfo=timezone.utc)
 
-        # 3. Stable numeric ID tie-break
         raw_id = str(ticket.get("id", ticket.get("ID", "T0")))
         digits = "".join(filter(str.isdigit, raw_id))
         id_num = int(digits) if digits else 0
@@ -70,12 +68,11 @@ def SLAAttentionQueue():
         )
 
 def DisplayMetrics():
-    if not os.path.exists(FilePath) or os.path.getsize(FilePath) == 0:
-        print("Error: Tickets file is empty or missing.")
+    try:
+        load_json(campus)
+    except (ValueError, OSError) as error:
+        print(f"Unable to load SLA data: {error}")
         return
-
-    with open(FilePath, "r") as file:
-        campus.tickets = json.load(file)
 
     now = datetime.now(timezone.utc)
 
@@ -87,6 +84,9 @@ def DisplayMetrics():
     priority_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
 
     for ticket in campus.tickets:
+        if not isinstance(ticket, dict):
+            continue
+
         status = str(ticket.get("status", "")).strip().lower()
         priority = str(ticket.get("priority", "")).strip().lower()
 
