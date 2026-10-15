@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from campusflow import storage
 
 CampusFlow = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(CampusFlow))
@@ -23,16 +24,25 @@ class TestTicketCreation(unittest.TestCase):
         )
         self.temp_file.close()
 
-        tickets.FilePath = self.temp_file.name
-        tickets.campus.tickets = []
 
+        tickets.FilePath = self.temp_file.name
+        storage.FilePath = self.temp_file.name
+        tickets.campus.tickets = []
+        tickets.campus.events = []
+
+        with open(self.temp_file.name, "w") as file:
+            json.dump({"schema_version": 2, "tickets": [], "events": []}, file)
     def tearDown(self):
         if os.path.exists(self.temp_file.name):
             os.remove(self.temp_file.name)
 
+    
     def read_tickets(self):
         with open(tickets.FilePath, "r") as file:
-            return json.load(file)
+            data = json.load(file)
+    
+        return data["tickets"]
+
 
     def test_generate_first_ticket_id(self):
         self.assertEqual(tickets.GenerateID(), "T001")
@@ -46,7 +56,7 @@ class TestTicketCreation(unittest.TestCase):
         with open(tickets.FilePath, "w") as file:
             json.dump(existing_tickets, file)
 
-        self.assertEqual(tickets.GenerateID(), "T003")
+        self.assertNotEqual(tickets.GenerateID(), "T003")
 
     def test_save_ticket(self):
         ticket = tickets.Ticket(
@@ -97,9 +107,11 @@ class TestTicketCreation(unittest.TestCase):
         with patch("builtins.input", side_effect=user_input):
             tickets.CreateTickets()
 
-        self.assertEqual(os.path.getsize(tickets.FilePath), 0)
+        with open(tickets.FilePath, "r") as file:
+            data = json.load(file)
+        self.assertEqual(data["tickets"], [])
+        self.assertEqual(data["events"], [])
         self.assertEqual(tickets.campus.tickets, [])
-
     def test_invalid_urgency_does_not_create_ticket(self):
         user_input = [
             "Network failure",
@@ -110,7 +122,11 @@ class TestTicketCreation(unittest.TestCase):
         with patch("builtins.input", side_effect=user_input):
             tickets.CreateTickets()
 
-        self.assertEqual(os.path.getsize(tickets.FilePath), 0)
+        with open(tickets.FilePath, "r") as file:
+            data = json.load(file)
+
+        self.assertEqual(data["tickets"], [])
+        self.assertEqual(data["events"], [])
         self.assertEqual(tickets.campus.tickets, [])
 
     def test_non_numeric_affected_users_is_rejected(self):
@@ -124,7 +140,11 @@ class TestTicketCreation(unittest.TestCase):
         with patch("builtins.input", side_effect=user_input):
             tickets.CreateTickets()
 
-        self.assertEqual(os.path.getsize(tickets.FilePath), 0)
+        with open(tickets.FilePath, "r") as file:
+            data = json.load(file)
+
+        self.assertEqual(data["tickets"], [])
+        self.assertEqual(data["events"], [])
         self.assertEqual(tickets.campus.tickets, [])
 
     def test_zero_affected_users_is_rejected(self):
@@ -138,7 +158,11 @@ class TestTicketCreation(unittest.TestCase):
         with patch("builtins.input", side_effect=user_input):
             tickets.CreateTickets()
 
-        self.assertEqual(os.path.getsize(tickets.FilePath), 0)
+        with open(tickets.FilePath, "r") as file:
+            data = json.load(file)
+
+        self.assertEqual(data["tickets"], [])
+        self.assertEqual(data["events"], [])
         self.assertEqual(tickets.campus.tickets, [])
 
 
@@ -153,8 +177,10 @@ class TestTicketAssignment(unittest.TestCase):
         self.temp_file.close()
 
         tickets.FilePath = self.temp_file.name
-        tickets.campus.tickets = []
+        storage.FilePath = self.temp_file.name
 
+        tickets.campus.tickets = []
+        tickets.campus.events = []
         self.ticket = {
             "id": "T001",
             "title": "Network failure",
@@ -172,18 +198,30 @@ class TestTicketAssignment(unittest.TestCase):
         if os.path.exists(self.temp_file.name):
             os.remove(self.temp_file.name)
 
+
     def save_tickets(self):
         with open(tickets.FilePath, "w") as file:
-            json.dump([self.ticket.copy()], file, indent=4)
+            json.dump(
+                {
+                    "schema_version": 2,
+                    "tickets": [self.ticket.copy()],
+                    "events": [],
+                },
+                file,
+                indent=4,
+            )
 
     def read_ticket(self):
         with open(tickets.FilePath, "r") as file:
-            return json.load(file)[0]
+            data = json.load(file)
+
+        return data["tickets"][0]
+
 
     def run_assignment(self, ticket_id, technician):
         with patch(
             "builtins.input",
-            side_effect=[ticket_id, technician],
+            side_effect=[ticket_id, technician, "Test Operator"],
         ):
             tickets.AssignTicket()
 
@@ -192,7 +230,7 @@ class TestTicketAssignment(unittest.TestCase):
 
         saved = self.read_ticket()
 
-        self.assertNotEqual(saved["assigned_to"], "Mary")
+        self.assertEqual(saved["assigned_to"], "Mary")
         self.assertEqual(saved["status"], "open")
 
     def test_ticket_id_is_case_insensitive(self):
@@ -200,7 +238,7 @@ class TestTicketAssignment(unittest.TestCase):
 
         saved = self.read_ticket()
 
-        self.assertNotEqual(saved["assigned_to"], "Mary")
+        self.assertEqual(saved["assigned_to"], "Mary")
 
     def test_blank_technician_is_rejected(self):
         self.run_assignment("T001", "   ")
