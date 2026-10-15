@@ -2,6 +2,7 @@
 class CampusFlow:
     def __init__(self):
         self.tickets = []
+        self.events = []
 
     @property
     def ticket(self):

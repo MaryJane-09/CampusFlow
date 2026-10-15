@@ -1,5 +1,5 @@
 from copy import deepcopy
-import os
+
 
 from . import storage
 from .show_ticket import campus
@@ -60,16 +60,14 @@ def apply_transition(ticket, event_type, actor, before, after, details, now):
 
 
 def WorkQueue():
-    path = storage.FilePath
-
-    if not os.path.exists(path) or os.path.getsize(path) == 0:
-        print("Error: Tickets file is empty or missing.")
+    try:
+        load_json(campus)
+    except (ValueError, OSError) as error:
+        print(f"Unable to load work queue: {error}")
         return
 
-    try:
-        storage.load_json(campus)
-    except (ValueError, OSError) as error:
-        print(f"Could not load tickets: {error}")
+    if not campus.tickets:
+        print("No tickets in the work queue.")
         return
 
     priority_order = {
@@ -95,13 +93,9 @@ def WorkQueue():
         print("No open tickets in the work queue.")
         return
 
-    print(
-        f"\n{'ID':<6} {'Title':<20} {'Priority':<10} "
-        f"{'Status':<12} {'Assigned To':<15}"
-    )
-    print("-" * 65)
-
-    for ticket in open_tickets:
+    print(f"\n{'ID':<7} {'Title':<30} {'Priority':<13} {'Status':<17} {'Assigned To':<22}")
+    print("-" * 85)
+    for ticket in sorted_tickets:
         assignee = ticket.get("assigned_to")
 
         if (
@@ -111,11 +105,11 @@ def WorkQueue():
             assignee = "Unassigned"
 
         print(
-            f"{ticket['ID']:<6} "
-            f"{ticket['title']:<20} "
-            f"{ticket['priority']:<10} "
-            f"{ticket['status']:<12} "
-            f"{assignee:<15}"
+            f"{ticket.get('id', ticket.get('ID')):<7} "
+            f"{ticket.get('title'):<30} "
+            f"{ticket.get('priority', 'N/A'):<13} "
+            f"{ticket.get('status'):<17} "
+            f"{assignee:<22}"
         )
 
 
