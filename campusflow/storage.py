@@ -3,38 +3,33 @@ import os
 
 from .validation import validate_data
 
+
 FilePath = "ticket.json"
 
+
 def load_json(campus_instance):
-    if not os.path.exists(FilePath) or os.path.getsize(FilePath) == 0:
-        campus_instance.tickets = []
-        campus_instance.events = []
-        return
-
     try:
-        with open(FilePath, "r") as file:
+        with open(FilePath, "r", encoding="utf-8") as file:
             data = json.load(file)
-            
-        if isinstance(data, dict):
-            campus_instance.tickets = data.get("tickets", [])
-            campus_instance.events = data.get("events", [])
-        elif isinstance(data, list):
-            campus_instance.tickets = data
-            campus_instance.events = []
-        else:
-            raise ValueError("JSON root must be a dictionary or list object.")
-            
-    except json.JSONDecodeError:
-        raise ValueError("JSON file was corrupted.")
+
+    except FileNotFoundError as error:
+        raise FileNotFoundError(
+            f"{FilePath} was not found; current data was not changed."
+        ) from error
+
+    except json.JSONDecodeError as error:
+        raise ValueError(
+            "JSON file is empty or corrupted; current data was not changed."
+        ) from error
+
+    validate_data(data)
+
+    campus_instance.tickets = data["tickets"]
+    campus_instance.events = data["events"]
 
 
-
-def save_json(campus: CampusFlow):
-  target_filename = "ticket.json"
-  temp_filename = "ticket.json.tmp"
-
-  try:
-    output_data = {
+def save_json(campus_instance):
+    data = {
         "schema_version": 2,
         "tickets": campus_instance.tickets,
         "events": campus_instance.events,
