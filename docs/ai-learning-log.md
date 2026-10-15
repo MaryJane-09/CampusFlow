@@ -332,3 +332,46 @@ OK
 ***Related file/commit:*** Reporting test file and README testing instructions.
 
 ***What I can now explain without AI:*** I understand how Python discovers automated tests, what the -s, -p, and -v arguments do, and how to interpret passing and failing test results.
+
+### Interaction #5 - datetime
+
+***Problem:** I needed to learn how to represent UTC timestamps and calculate ticket deadlines.
+
+***My initial understanding:*** I knew how to get the current time, but I didn’t understand naive and timezone-aware datetimes. My first attempt used datetime.now() without a timezone.
+
+***Prompt to AI:*** what is naive and aware
+
+***Useful AI guidance:*** AI explained that aware datetimes include timezone information, timedelta represents a duration, and fixed starting times make tests predictable.
+
+***My independent experiment/test:*** I wrote a small program that created an aware UTC datetime and added 60 minutes. I then used a fixed starting time of 14 October 2026 at 10:00 UTC and predicted an 11:00 UTC result.
+
+***Verification source or result:*** ran my test and it past python3 -m unittest discover -s tests -p "test_sla.py" -v
+
+***Decision:** I accepted the guidance to pass the starting time into calculate_due_at instead of reading the current time inside it. This lets the same function work with real creation times and fixed test times.
+
+***Related file/commit:*** campusflow/sla.py, tests/test_sla.py
+
+***What I can now explain without AI:*** I can explain the difference between datetime and duration, why timezone information matters
+
+### Interaction #6 - unittest
+
+***Problem:** I needed to learn how to use Python’s unittest to verify my SLA deadline function.
+
+
+***My initial understanding:***I knew how to define a test class, but I wasn’t sure what inputs to pass or how to write the expected result. My first attempt passed 60 as the cycle start instead of a datetime.
+
+***Prompt to AI:*** “explain better”
+
+I asked this after being guided to write my first SLA test.
+
+***Useful AI guidance:*** AI explained three steps: prepare known inputs, call the function, and compare its actual result with an independently chosen expected value. It also explained how to use self.assertEqual.
+
+***My independent experiment/test:*** I wrote a critical-priority test using 14 October 2026 at 10:00 UTC as the starting time. I initially made the expected deadline equal to the starting time. After reviewing the requirement, I changed the expected deadline to 11:00 UTC and ran the test.
+
+***Verification source or result:*** I ran python3 -m unittest discover -s tests -p "test_sla.py"
+
+***Decision:** I accepted the advice to use fixed UTC inputs and explicit expected datetimes. This makes the tests repeatable and avoids copying the function’s calculation into the expected result.
+
+***Related file/commit:*** campusflow/sla.py, tests/test_sla.py 
+
+***What I can now explain without AI:*** I can explain what unittest is and how to use their basic assert such as asserEqual() etc.
