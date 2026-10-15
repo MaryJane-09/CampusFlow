@@ -23,9 +23,9 @@ class Ticket:
     updated_at: str
     due_at: str                       
     status: str = "Open"
-    assigned_to: str | None = "None"
+    assigned_to: str | None = None
     escalation_cycle: int = 0
-    escalated_cycle: int | None = "None"
+    escalated_cycle: int | None = None
 
 
 def SaveTicket(tickets: Ticket):
@@ -143,7 +143,6 @@ def CreateTickets():
         escalation_cycle=0,
     )
 
-    SaveTicket(tickets)
     if not SaveTicket(tickets):
         return
 
