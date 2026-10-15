@@ -1,198 +1,144 @@
-import json
 import os
-import tempfile
 import unittest
+from copy import deepcopy
 from unittest.mock import patch
 
-from campusflow import workflow
+from campusflow import workflow, storage
+from campus_test_support import CampusTestSetup
 
 
-class TestWorkQueueAndWorkFlow(unittest.TestCase):
-
+class TestWorkQueueAndWorkFlow(CampusTestSetup, unittest.TestCase):
     def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.ticket_file = os.path.join(self.temp_dir.name, "ticket.json")
-        self.patcher = patch.object(workflow, "FilePath", self.ticket_file)
-        self.patcher.start()
+        super().setUp()
+        self.prepare_ticket()
 
-        self.tickets = [
-            {
-                "id": "T001",
-                "title": "Slow network",
-                "priority": "Low",
-                "status": "open",
-                "assigned_to": "None",
-            },
-            {
-                "id": "T002",
-                "title": "Server down",
-                "priority": "Critical",
-                "status": "open",
-                "assigned_to": "Alex",
-            },
-            {
-                "id": "T003",
-                "title": "Old issue",
-                "priority": "High",
-                "status": "resolved",
-                "assigned_to": "Sam",
-            },
-            {
-                "id": "T004",
-                "title": "Login error",
-                "priority": "High",
-                "status": "in_progress",
-                "assigned_to": "Jamie",
-            },
-        ]
+    def run_workflow(self, answers):
+        with patch("builtins.input", side_effect=answers):
+            with patch("builtins.print") as output:
+                workflow.WorkFlow(now=self.now)
+        return output
 
-        self.save_tickets()
-
-    def tearDown(self):
-        self.patcher.stop()
-        self.temp_dir.cleanup()
-
-    def save_tickets(self):
-        with open(self.ticket_file, "w") as file:
-            json.dump(self.tickets, file)
-
-    def read_tickets(self):
-        with open(self.ticket_file, "r") as file:
-            return json.load(file)
-
-    # WorkQueue tests
-
-    def test_queue_shows_active_tickets(self):
-        with patch("builtins.print") as mock_print:
+    def queue_output(self):
+        with patch("builtins.print") as output:
             workflow.WorkQueue()
+        return str(output.call_args_list)
 
-        output = "\n".join(
-            str(call) for call in mock_print.call_args_list
-        )
+    def check_event(self, kind, old_events):
+        data = self.read_data()
+        self.assertEqual(len(data["events"]), len(old_events) + 1)
+        self.assertEqual(data["events"][:-1], old_events)
+        event = data["events"][-1]
+        self.assertEqual(event["event_type"], kind)
+        self.assertEqual(event["actor"], "Test Operator")
+        self.assertEqual(event["timestamp"], self.now.isoformat())
 
-        self.assertIn("T001", output)
-        self.assertIn("T002", output)
-        self.assertIn("T004", output)
-        self.assertNotIn("T003", output)
+    def test_queue_shows_only_open_tickets(self):
+        self.assertIn("T001", self.queue_output())
+        self.prepare_ticket("in_progress")
+        self.assertNotIn("T001", self.queue_output())
+        # Rebuild a separate valid resolved fixture.
+        self.ticket["status"] = "resolved"
+        self.ticket["updated_at"] = "2026-10-15T10:30:00+00:00"
+        self.add_event("RESOLVE", "in_progress", "resolved", self.ticket["updated_at"])
+        self.write_data([self.ticket], self.events)
+        self.assertNotIn("T001", self.queue_output())
 
     def test_queue_sorts_by_priority(self):
-        with patch("builtins.print") as mock_print:
-            workflow.WorkQueue()
+        second = deepcopy(self.ticket)
+        second.update(ID="T002", priority="Low", urgency="low", affected_users=1,
+                      due_at="2026-10-17T10:00:00+00:00")
+        event = deepcopy(self.events[0])
+        event.update(event_id="E002", ticket_id="T002")
+        self.write_data([second, self.ticket], self.events + [event])
+        output = self.queue_output()
+        self.assertLess(output.index("T001"), output.index("T002"))
 
-        output = "\n".join(
-            str(call) for call in mock_print.call_args_list
-        )
-
-        self.assertLess(output.index("T002"), output.index("T004"))
-        self.assertLess(output.index("T004"), output.index("T001"))
+    def test_queue_breaks_ties_by_id(self):
+        second = deepcopy(self.ticket)
+        second["ID"] = "T002"
+        event = deepcopy(self.events[0])
+        event.update(event_id="E002", ticket_id="T002")
+        self.write_data([second, self.ticket], self.events + [event])
+        output = self.queue_output()
+        self.assertLess(output.index("T001"), output.index("T002"))
 
     def test_queue_shows_unassigned_tickets(self):
-        with patch("builtins.print") as mock_print:
-            workflow.WorkQueue()
-
-        output = "\n".join(
-            str(call) for call in mock_print.call_args_list
-        )
-
-        self.assertIn("Unassigned", output)
+        self.assertIn("Unassigned", self.queue_output())
 
     def test_queue_handles_missing_file(self):
-        os.remove(self.ticket_file)
-
-        with patch("builtins.print") as mock_print:
-            workflow.WorkQueue()
-
-        mock_print.assert_called_with(
-            "Error: Tickets file is empty or missing."
-        )
+        os.remove(storage.FilePath)
+        self.assertIn("Error: Tickets file is empty or missing.", self.queue_output())
 
     def test_queue_handles_empty_file(self):
-        open(self.ticket_file, "w").close()
+        with open(storage.FilePath, "w"):
+            pass
+        self.assertIn("Error: Tickets file is empty or missing.", self.queue_output())
 
-        with patch("builtins.print") as mock_print:
-            workflow.WorkQueue()
+    def test_queue_rejects_malformed_string_tickets(self):
+        storage.load_json(workflow.campus)
+        before_tickets = deepcopy(workflow.campus.tickets)
+        before_events = deepcopy(workflow.campus.events)
+        self.write_data([self.ticket, "rogue_string"], self.events)
+        before_file = self.read_data()
+        self.assertIn("Could not load tickets:", self.queue_output())
+        self.assertEqual(workflow.campus.tickets, before_tickets)
+        self.assertEqual(workflow.campus.events, before_events)
+        self.assertEqual(self.read_data(), before_file)
 
-        mock_print.assert_called_with(
-            "Error: Tickets file is empty or missing."
-        )
+    def test_open_ticket_can_be_started_when_assigned(self):
+        self.prepare_ticket(assigned=True)
+        self.run_workflow(["T001", "in_progress", "Test Operator"])
+        self.assertEqual(self.read_data()["tickets"][0]["status"], "in_progress")
+        self.check_event("START", self.events)
 
-    def test_queue_handles_malformed_string_tickets(self):
-        """Ensure WorkQueue doesn't crash if rogue strings are mixed into the ticket list."""
-        self.tickets.append("rogue_malformed_string_fixture")
-        self.save_tickets()
+    def test_in_progress_ticket_can_be_resolved(self):
+        self.prepare_ticket("in_progress")
+        self.run_workflow(["T001", "resolved", "Test Operator"])
+        self.assertEqual(self.read_data()["tickets"][0]["status"], "resolved")
+        self.check_event("RESOLVE", self.events)
 
-        with patch("builtins.print") as mock_print:
-            try:
-                workflow.WorkQueue()
-            except AttributeError as e:
-                self.fail(f"WorkQueue crashed due to unhandled non-dict item: {e}")
+    def test_resolved_ticket_can_be_reopened(self):
+        self.prepare_ticket("resolved")
+        self.run_workflow(["T001", "open", "Test Operator"])
+        ticket = self.read_data()["tickets"][0]
+        self.assertEqual(ticket["status"], "open")
+        self.assertEqual(ticket["created_at"], self.ticket["created_at"])
+        self.assertEqual(ticket["updated_at"], self.now.isoformat())
+        self.assertEqual(ticket["due_at"], "2026-10-16T11:00:00+00:00")
+        self.assertEqual(ticket["escalation_cycle"], 1)
+        self.assertIsNone(ticket["escalated_cycle"])
+        self.check_event("REOPEN", self.events)
 
-    # WorkFlow tests
+    def check_rejection(self, answers, message):
+        before = self.read_data()
+        output = self.run_workflow(answers)
+        output.assert_any_call(message)
+        self.assert_state(before)
 
-    @patch("builtins.input", side_effect=["T001", "in_progress"])
-    def test_open_ticket_can_be_started_when_assigned(self, mock_input):
-        self.tickets[0]["assigned_to"] = "Alex"
-        self.save_tickets()
+    def test_unassigned_ticket_cannot_be_started(self):
+        self.check_rejection(["T001", "in_progress"], "Error: Ticket has not been assigned.")
 
-        workflow.WorkFlow()
+    def test_open_ticket_cannot_skip_to_resolved(self):
+        self.check_rejection(["T001", "resolved"], "Error: Must follow workflow.")
 
-        tickets = self.read_tickets()
-        self.assertEqual(tickets[0]["status"], "in_progress")
+    def test_resolved_ticket_must_be_reopened_first(self):
+        self.prepare_ticket("resolved")
+        self.check_rejection(["T001", "in_progress"], "Error: Reopen the ticket first.")
 
-    @patch("builtins.input", side_effect=["T001", "in_progress"])
-    def test_unassigned_ticket_cannot_be_started(self, mock_input):
-        with patch("builtins.print") as mock_print:
-            workflow.WorkFlow()
+    def test_unknown_ticket_id_is_rejected(self):
+        self.check_rejection(["UNKNOWN"], "Error: No match found.")
 
-        mock_print.assert_called_with(
-            "Error: Ticket has not been assigned."
-        )
-        self.assertEqual(self.read_tickets()[0]["status"], "open")
+    def test_invalid_status_is_rejected(self):
+        self.check_rejection(["T001", "invalid"], "Error: Unrecognized workflow.")
 
-    @patch("builtins.input", side_effect=["T004", "resolved"])
-    def test_in_progress_ticket_can_be_resolved(self, mock_input):
-        workflow.WorkFlow()
-
-        self.assertEqual(self.read_tickets()[3]["status"], "resolved")
-
-    @patch("builtins.input", side_effect=["T003", "open"])
-    def test_resolved_ticket_can_be_reopened(self, mock_input):
-        workflow.WorkFlow()
-
-        self.assertEqual(self.read_tickets()[2]["status"], "open")
-
-    @patch("builtins.input", side_effect=["T001", "resolved"])
-    def test_open_ticket_cannot_skip_to_resolved(self, mock_input):
-        with patch("builtins.print") as mock_print:
-            workflow.WorkFlow()
-
-        mock_print.assert_called_with("Error: Must follow workflow.")
-        self.assertEqual(self.read_tickets()[0]["status"], "open")
-
-    @patch("builtins.input", side_effect=["T003", "in_progress"])
-    def test_resolved_ticket_must_be_reopened_first(self, mock_input):
-        with patch("builtins.print") as mock_print:
-            workflow.WorkFlow()
-
-        mock_print.assert_called_with(
-            "Error: Reopen the ticket first."
-        )
-        self.assertEqual(self.read_tickets()[2]["status"], "resolved")
-
-    @patch("builtins.input", side_effect=["UNKNOWN", "open"])
-    def test_unknown_ticket_id_is_rejected(self, mock_input):
-        with patch("builtins.print") as mock_print:
-            workflow.WorkFlow()
-
-        mock_print.assert_called_with("Error: No match found")
-
-    @patch("builtins.input", side_effect=["T001", "invalid"])
-    def test_invalid_status_is_rejected(self, mock_input):
-        with patch("builtins.print") as mock_print:
-            workflow.WorkFlow()
-
-        mock_print.assert_called_with("Error: Unrecognized workflow.")
-        self.assertEqual(self.read_tickets()[0]["status"], "open")
+    def test_save_failure_restores_state(self):
+        self.prepare_ticket("resolved")
+        before = self.read_data()
+        with patch.object(storage, "save_json", side_effect=OSError("Disk failure")) as save:
+            output = self.run_workflow(["T001", "open", "Test Operator"])
+        save.assert_called_once()
+        output.assert_any_call("Transition failed; changes rolled back: Disk failure")
+        self.assert_state(before)
 
 
 if __name__ == "__main__":
