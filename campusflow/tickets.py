@@ -4,6 +4,7 @@ import os
 import json
 from datetime import datetime, timezone
 from .sla import calculate_due_at
+from .duplicate import confirm_ticket_creation 
 
 FilePath = "ticket.json"
 
@@ -57,6 +58,7 @@ def GenerateID(prefix="T"):
     return f"{prefix}{max_num:03d}"
 
 
+
 def CreateTickets():
     title_input = input("Problem Title: ").strip()
     if not title_input:
@@ -71,11 +73,14 @@ def CreateTickets():
         print("Invalid Category.")
         return
 
+    if not confirm_ticket_creation(title_input, category_input):
+        return
+
     urgency_input = input("Urgency (High/Medium/Low): ").lower().strip()
     if urgency_input not in ("high", "medium", "low"):
         print("Invalid Urgency.")
         return
-
+    
     try:
         affected_user_input = int(input("Affected Users: "))
     except ValueError:

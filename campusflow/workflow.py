@@ -1,8 +1,39 @@
 from .show_ticket import campus
+from .history import record_event
+from .storage import load_json, save_json
+from copy import deepcopy
 import json
 import os
 
 FilePath = "ticket.json"
+
+
+def apply_transition(ticket, event_type, actor, before, after, details):
+    previous_status = ticket.get("status")
+    previous_events = deepcopy(campus.events)
+
+    try:
+        ticket["status"] = after
+
+        record_event(
+            ticket.get("id", ticket.get("ID")),
+            event_type,
+            actor,
+            before,
+            after,
+            details,
+        )
+
+        save_json(campus)
+
+    except (OSError, TypeError, ValueError) as error:
+        ticket["status"] = previous_status
+        campus.events = previous_events
+        print(f"Transition failed; changes rolled back: {error}")
+        return False
+
+    return True
+
 
 def WorkQueue():
     if not os.path.exists(FilePath) or os.path.getsize(FilePath) == 0:
@@ -53,46 +84,60 @@ def WorkQueue():
         )
 
 
+
 def WorkFlow():
-    if not os.path.exists(FilePath) or os.path.getsize(FilePath) == 0:
-        print("Error: No tickets file found to edit.")
+    try:
+        load_json(campus)
+    except (ValueError, OSError) as error:
+        print(f"Could not load tickets: {error}")
         return
 
-    with open(FilePath, "r") as file:
-        campus.tickets = json.load(file)
+    if not campus.tickets:
+        print("Error: No tickets found to edit.")
+        return
 
-    ticket_id = input("Ticket ID: ")
+    ticket_id = input("Ticket ID: ").strip().upper()
     target_ticket = None
 
     for ticket in campus.tickets:
-        if str(ticket.get("id", ticket.get("ID", ""))).upper() == ticket_id.strip().upper():
+        current_id = str(
+            ticket.get("id", ticket.get("ID", ""))
+        ).strip().upper()
+
+        if current_id == ticket_id:
             target_ticket = ticket
             break
 
     if target_ticket is None:
-        print("Error: No match found")
+        print("Error: No match found.")
         return
 
-    new_status = input("Ticket Status: ").lower().strip()
-    current_status = str(target_ticket.get("status", "")).lower().strip()
+    new_status = input("Ticket Status: ").strip().lower()
+    current_status = str(
+        target_ticket.get("status", "")
+    ).strip().lower()
 
     if current_status == "open" and new_status == "open":
-        print("Ticket is already open")
+        print("Ticket is already open.")
+        return
 
-    elif current_status == "open" and new_status == "in_progress":
+    if current_status == "open" and new_status == "in_progress":
         assignee = target_ticket.get("assigned_to")
 
-        if not assignee or assignee == "None":
+        if not assignee or str(assignee).strip().lower() == "none":
             print("Error: Ticket has not been assigned.")
             return
 
-        target_ticket["status"] = "in_progress"
+        event_type = "START"
+        details = "Ticket moved to in_progress."
 
     elif current_status == "in_progress" and new_status == "resolved":
-        target_ticket["status"] = "resolved"
+        event_type = "RESOLVE"
+        details = "Ticket resolved."
 
     elif current_status == "resolved" and new_status == "open":
-        target_ticket["status"] = "open"
+        event_type = "REOPEN"
+        details = "Ticket reopened."
 
     elif current_status == "open" and new_status == "resolved":
         print("Error: Must follow workflow.")
@@ -106,9 +151,24 @@ def WorkFlow():
         print("Error: Unrecognized workflow.")
         return
 
-    with open(FilePath, "w") as file:
-        json.dump(campus.tickets, file, indent=4)
-        
+    actor = input("Enter Operator Name: ").strip()
+
+    if not actor:
+        print("Error: Operator name cannot be empty.")
+        return
+
+    success = apply_transition(
+        target_ticket,
+        event_type,
+        actor,
+        current_status,
+        new_status,
+        details,
+    )
+
+    if success:
+        print(f"Ticket {ticket_id} changed to {new_status}.")
+
 if __name__ == "__main__":
     WorkFlow()
     WorkQueue()
