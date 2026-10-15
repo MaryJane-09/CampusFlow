@@ -34,7 +34,9 @@ def calculate_due_at(priority, cycle_start):
         raise ValueError("Invalid ticket priority.")
 
     cycle_start = utc_time(cycle_start)
-    return cycle_start + timedelta(minutes=SLA_MINUTES[priority])
+    duration = timedelta(minutes=SLA_MINUTES[priority])
+
+    return cycle_start + duration
 
 
 def is_overdue(ticket, now):
