@@ -21,6 +21,7 @@ class Ticket:
     status: str = "Open"
     assigned_to: str | None = "None"
     escalation_cycle: int = 0
+    escalated_cycle: int | None = None
 
 def SaveTicket(tickets: Ticket):
     if os.path.exists(FilePath) and os.path.getsize(FilePath) > 0:
