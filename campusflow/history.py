@@ -42,27 +42,34 @@ def GenerateEventID(prefix="E"):
     return f"{prefix}{max_num:03d}"
 
 
-def record_event(
-    ticket_id, event_type, actor, before_status, after_status, details
-):
-  event_id = GenerateEventID()
+def record_event(ticket_id, event_type, actor, before_status, after_status, details, *, now=None,):
+    if not isinstance(actor, str) or not actor.strip():
+        raise ValueError("Operator name cannot be empty.")
 
-  current_time = datetime.now(timezone.utc).isoformat()
+    if now is None:
+        now = datetime.now(timezone.utc)
 
-  new_event = Event(
-      event_id=event_id,
-      ticket_id=ticket_id,
-      event_type=event_type,
-      actor=actor,
-      timestamp=current_time,
-      before_status=before_status,
-      after_status=after_status,
-      details=details,
-  )
+    if (
+        not isinstance(now, datetime)
+        or now.tzinfo is None
+        or now.utcoffset() is None
+    ):
+        raise ValueError("Event time must include a timezone.")
 
-  events = asdict(new_event)
-  campus.events.append(events)
-  return events
+    new_event = Event(
+        event_id=GenerateEventID(),
+        ticket_id=ticket_id,
+        event_type=event_type,
+        actor=actor.strip(),
+        timestamp=now.astimezone(timezone.utc).isoformat(),
+        before_status=before_status,
+        after_status=after_status,
+        details=details,
+    )
+
+    event = asdict(new_event)
+    campus.events.append(event)
+    return event
 
 
 def show_history():
