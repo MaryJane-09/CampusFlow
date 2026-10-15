@@ -24,3 +24,41 @@ def is_overdue(ticket, now):
     deadline = datetime.fromisoformat(due_at_str)
     
     return now > deadline
+
+
+def escalate_overdue(tickets, events, now, actor, *, event_recorder):
+    newly_escalated = 0
+    already_escalated = 0
+
+    for ticket in tickets:
+        if not is_overdue(ticket, now):
+            continue
+
+        current_cycle = ticket["escalation_cycle"]
+
+        if ticket["escalated_cycle"] == current_cycle:
+            already_escalated += 1
+            continue
+
+        event = event_recorder(
+            events=events,
+            ticket_id=ticket["id"],
+            event_type="ESCALATE",
+            actor=actor,
+            before_status=ticket["status"],
+            after_status=ticket["status"],
+            details=f"Overdue escalation for SLA cycle {current_cycle}",
+            now=now,
+        )
+
+        if not isinstance(event, dict):
+            raise TypeError("Event recorder must return an event dictionary.")
+
+        events.append(event)
+        ticket["escalated_cycle"] = current_cycle
+        newly_escalated += 1
+
+    return {
+        "newly_escalated": newly_escalated,
+        "already_escalated": already_escalated,
+    }
