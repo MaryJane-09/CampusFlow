@@ -37,6 +37,10 @@ https://github.com/MaryJane-09/CampusFlow/pull/8
 
 https://github.com/MaryJane-09/CampusFlow/pull/1
 
+https://github.com/MaryJane-09/CampusFlow/pull/11
+
+https://github.com/MaryJane-09/CampusFlow/pull/18
+
  ### Python Version - python 3.12.3
 
  ### setup: 
