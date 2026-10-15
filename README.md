@@ -22,6 +22,10 @@ https://github.com/MaryJane-09/CampusFlow/pull/3
 
 https://github.com/MaryJane-09/CampusFlow/pull/4
 
+***PR 2***
+https://github.com/MaryJane-09/CampusFlow/pull/12
+https://github.com/MaryJane-09/CampusFlow/pull/15
+
 ### 2. Chinaza Nzekwe:
  Developed F1 (Ticket Creation), F3 (Ticket Assignment), F4 (Ticket Workflow), and F5 (Priority Queue) and also contribute to the README documentation and tested the implemented features.
 
@@ -36,6 +40,8 @@ https://github.com/MaryJane-09/CampusFlow/pull/10
 https://github.com/MaryJane-09/CampusFlow/pull/8
 
 https://github.com/MaryJane-09/CampusFlow/pull/1
+
+**PR 2**
 
 https://github.com/MaryJane-09/CampusFlow/pull/11
 
