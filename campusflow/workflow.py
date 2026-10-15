@@ -1,5 +1,5 @@
 from copy import deepcopy
-
+import os
 
 from . import storage
 from .show_ticket import campus
@@ -60,14 +60,16 @@ def apply_transition(ticket, event_type, actor, before, after, details, now):
 
 
 def WorkQueue():
-    try:
-        load_json(campus)
-    except (ValueError, OSError) as error:
-        print(f"Unable to load work queue: {error}")
+    path = storage.FilePath
+
+    if not os.path.exists(path) or os.path.getsize(path) == 0:
+        print("Error: Tickets file is empty or missing.")
         return
 
-    if not campus.tickets:
-        print("No tickets in the work queue.")
+    try:
+        storage.load_json(campus)
+    except (ValueError, OSError) as error:
+        print(f"Could not load tickets: {error}")
         return
 
     priority_order = {
@@ -93,9 +95,13 @@ def WorkQueue():
         print("No open tickets in the work queue.")
         return
 
-    print(f"\n{'ID':<7} {'Title':<30} {'Priority':<13} {'Status':<17} {'Assigned To':<22}")
-    print("-" * 85)
-    for ticket in sorted_tickets:
+    print(
+        f"\n{'ID':<6} {'Title':<20} {'Priority':<10} "
+        f"{'Status':<12} {'Assigned To':<15}"
+    )
+    print("-" * 65)
+
+    for ticket in open_tickets:
         assignee = ticket.get("assigned_to")
 
         if (
@@ -105,11 +111,11 @@ def WorkQueue():
             assignee = "Unassigned"
 
         print(
-            f"{ticket.get('id', ticket.get('ID')):<7} "
-            f"{ticket.get('title'):<30} "
-            f"{ticket.get('priority', 'N/A'):<13} "
-            f"{ticket.get('status'):<17} "
-            f"{assignee:<22}"
+            f"{ticket['ID']:<6} "
+            f"{ticket['title']:<20} "
+            f"{ticket['priority']:<10} "
+            f"{ticket['status']:<12} "
+            f"{assignee:<15}"
         )
 
 
@@ -146,7 +152,10 @@ def WorkFlow(now=None):
     if current_status == "open" and new_status == "in_progress":
         assignee = target.get("assigned_to")
 
-        if (not assignee or str(assignee).strip().lower() in ("", "none")):
+        if (
+            not assignee
+            or str(assignee).strip().lower() in ("", "none")
+        ):
             print("Error: Ticket has not been assigned.")
             return
 
@@ -182,7 +191,15 @@ def WorkFlow(now=None):
         print(f"Error: {error}")
         return
 
-    success = apply_transition(target, event_type, actor, current_status, new_status, f"Status changed to {new_status}.", now,)
+    success = apply_transition(
+        target,
+        event_type,
+        actor,
+        current_status,
+        new_status,
+        f"Status changed to {new_status}.",
+        now,
+    )
 
     if success:
         print(f"Ticket {ticket_id} changed to {new_status}.")
