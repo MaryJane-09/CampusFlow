@@ -1,43 +1,44 @@
 import json
 import os
 
+from .show_ticket import CampusFlow
 from .validation import validate_data
 
 
 FilePath = "ticket.json"
 
 
-def load_json(campus_instance):
+def load_json(campus: CampusFlow):
     try:
         with open(FilePath, "r", encoding="utf-8") as file:
             data = json.load(file)
 
-    except FileNotFoundError as error:
+    except FileNotFoundError:
         raise FileNotFoundError(
-            f"{FilePath} was not found; current data was not changed."
-        ) from error
+            "Ticket file was not found. Current data was not changed."
+        ) from None
 
-    except json.JSONDecodeError as error:
+    except json.JSONDecodeError:
         raise ValueError(
-            "JSON file is empty or corrupted; current data was not changed."
-        ) from error
+            "Ticket file is empty or corrupted. Current data was not changed."
+        ) from None
 
     validate_data(data)
 
-    campus_instance.tickets = data["tickets"]
-    campus_instance.events = data["events"]
+    campus.tickets = data["tickets"]
+    campus.events = data["events"]
 
 
-def save_json(campus_instance):
+def save_json(campus: CampusFlow):
     data = {
         "schema_version": 2,
-        "tickets": campus_instance.tickets,
-        "events": campus_instance.events,
+        "tickets": campus.tickets,
+        "events": campus.events,
     }
 
     validate_data(data)
 
-    target_file = os.fspath(FilePath)
+    target_file = str(FilePath)
     temp_file = target_file + ".tmp"
 
     try:
