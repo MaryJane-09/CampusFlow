@@ -35,6 +35,203 @@ Accepted the proposed approach provisionally because it addresses the inconsiste
 **What I can now explain without AI:**  
 Python dictionary keys are case-sensitive, so `"id"` and `"ID"` are different keys. The `.get()` method lets me retrieve a value without raising a `KeyError` when a key is missing. I can also normalize strings using `.lower().strip()` so differences in capitalization and surrounding whitespace do not interfere with status comparisons. I understand that I must run tests to verify a proposed fix rather than assuming it works.
 
+# Interaction #2 — Event Recording, Persistence, and Workflow Consistency
+
+**Problem:**
+
+My CampusFlow application needed to record successful ticket actions, preserve event history, and keep ticket data consistent when saving failed. I also needed to display ticket history in chronological order.
+
+**My initial understanding:**
+
+I had implemented ticket status transitions and an event-recording function. However, I needed to understand how a failed save could leave the in-memory ticket state and event history inconsistent with the persisted JSON data.
+
+**Prompt to AI:**
+
+I shared my existing `workflow.py`, `history.py`, and `storage.py` implementations and asked for help finishing the required Engineer B features.
+
+**Useful AI guidance:**
+
+The AI helped me identify that my workflow changed the ticket status and recorded an event before saving the database. It guided me toward using a rollback approach to restore the previous status and event history when a handled error occurs.
+
+I also learned that my storage implementation uses a temporary JSON file, flushes the file, calls `os.fsync()`, and replaces the original file with `os.replace()`. This helps prevent a partially written file from replacing the existing database.
+
+The AI also identified that sample event-recording calls at the bottom of `history.py` could create unintended events when the module was imported.
+
+**My independent experiment/test:**
+
+I updated my workflow to use a shared transition helper, added rollback handling, and changed the work queue to load ticket data through the existing storage function. I confirmed that the application continued working afterward.
+
+**Verification source or result:**
+
+My application continued working after the changes. However, I still need a dedicated test that simulates a save failure and verifies that both the ticket status and event history are restored.
+
+**Decision:**
+
+I accepted the suggested approach while recognizing that a successful normal workflow does not, by itself, prove that rollback works under every failure condition.
+
+**Related files:**
+
+- `workflow.py`
+- `history.py`
+- `storage.py`
+- `show_ticket.py`
+
+**What I can now explain without AI:**
+
+I can explain why changing a ticket's status and recording its event must be treated as one logical operation. If saving fails, the application should restore the previous in-memory state so the ticket and event history remain consistent. I also understand the purpose of temporary-file replacement and why importing a module should not automatically create sample records.
+
+---
+
+# Interaction #3 — Ticket History Display and Chronological Ordering
+
+**Problem:**
+
+I needed to implement a history-display function that shows the event sequence for a ticket, including creation, assignment, starting work, resolution, and reopening.
+
+**My initial understanding:**
+
+I already had an `Event` dataclass and a `campus.events` collection. However, I initially approached history display as though it required creating a new event from user input.
+
+**Prompt to AI:**
+
+I shared my initial `show_history()` function and asked for guidance on implementing the history-display requirement.
+
+**Useful AI guidance:**
+
+The AI explained the difference between recording an event and displaying an existing event. It guided me toward filtering the stored events by ticket ID, checking whether the ticket exists, sorting matching events by timestamp, and displaying the recorded information without modifying the event history.
+
+**My independent experiment/test:**
+
+I rewrote `show_history()` to:
+
+- Normalize the ticket ID using `.upper().strip()`.
+- Check whether the ticket exists in `campus.tickets`.
+- Collect matching records from `campus.events`.
+- Sort matching events by timestamp.
+- Display the event ID, action, operator, timestamp, status transition, and details.
+- Handle tickets without recorded events.
+
+**Verification source or result:**
+
+I completed the revised function. I still need to verify its behavior using dedicated tests for multiple events, tickets without events, and nonexistent ticket IDs.
+
+**Decision:**
+
+I accepted the read-only history-display approach because event creation and event display have different responsibilities.
+
+**Related files:**
+
+- `history.py`
+- The module containing `show_history()`
+- `storage.py`
+
+**What I can now explain without AI:**
+
+I can explain why filtering events by ticket ID prevents unrelated events from appearing in a ticket's history. I understand why matching events should be collected before sorting and why displaying history should not create new events or change existing records.
+
+---
+
+# Interaction #4 — Duplicate Ticket Detection and Title Normalization
+
+**Problem:**
+
+CampusFlow needed to warn users about unresolved tickets with matching titles in the same category.
+
+**My initial understanding:**
+
+I understood that duplicate detection required comparing ticket titles, but I needed to determine how to handle differences in capitalization and whitespace.
+
+**Prompt to AI:**
+
+I asked how to normalize ticket titles so that titles such as `Printer is not working` and ` printer IS NOT WORKING ` would be treated as equivalent.
+
+**Useful AI guidance:**
+
+The AI explained that `lower()` converts text to lowercase, while `split()` without an argument separates words and handles repeated whitespace. Joining the resulting words with a single space creates a normalized title.
+
+I then received guidance on checking the normalized title, category, and ticket status when searching for duplicates.
+
+**My independent experiment/test:**
+
+I identified the normalization operations and received a `detect_duplicates()` implementation that:
+
+- Normalizes the new and existing ticket titles.
+- Compares categories without case sensitivity.
+- Checks for unresolved tickets.
+- Excludes the current ticket when its ID is supplied.
+- Returns matching tickets so the creation workflow can ask the user whether to continue.
+
+**Verification source or result:**
+
+The function was written, but its integration into ticket creation and its behavior under dedicated duplicate-detection tests still need verification.
+
+**Decision:**
+
+I accepted the normalization approach because it allows the application to detect equivalent titles despite differences in capitalization and repeated whitespace. Duplicate detection should warn users rather than automatically prevent creation.
+
+**Related files:**
+
+- `duplicate.py`
+- The ticket-creation module
+- `show_ticket.py`
+
+**What I can now explain without AI:**
+
+I can explain how normalization makes string comparisons more consistent. I understand that matching titles alone is insufficient: the category must also match, and resolved tickets should not trigger an unresolved-ticket warning.
+
+---
+
+# Interaction #5 — JSON Schema Migration and Test Verification
+
+**Problem:**
+
+My application reported `JSON root must be a dictionary object` because my existing `ticket.json` contained a list of tickets, while the updated storage layer expected a dictionary containing a schema version, tickets, and events.
+
+**My initial understanding:**
+
+I knew that ticket loading had failed, but I needed to identify the mismatch between the existing JSON structure and the structure expected by `load_json()`.
+
+**Prompt to AI:**
+
+I shared the error message and the contents of my existing `ticket.json` file.
+
+**Useful AI guidance:**
+
+The AI identified the schema mismatch and explained that the storage layer expected an object with `schema_version`, `tickets`, and `events` fields. It guided me in preserving the existing ticket records while placing them inside the expected structure.
+
+**My independent experiment/test:**
+
+I updated the JSON structure to include `schema_version: 2`, preserved the existing tickets, and added an empty events list because no historical events needed to be retained in that file.
+
+I then reran the application.
+
+**Verification source or result:**
+
+The application loaded successfully after the JSON structure was corrected. My subsequent test run produced:
+
+- 77 tests run.
+- 77 tests passed.
+- 0 failures.
+- 0 errors.
+
+The test output included checks involving invalid categories, urgency, user counts, and simulated disk failure. The complete feature coverage still needs to be compared with the Engineer B requirements.
+
+**Decision:**
+
+I accepted the schema correction because it matched the storage layer's validation requirements and preserved the existing tickets.
+
+**Related files:**
+
+- `ticket.json`
+- `storage.py`
+- `show_ticket.py`
+- `tests/`
+
+**What I can now explain without AI:**
+
+I can explain the difference between a JSON list and a JSON object, why the outermost structure must match what the loader expects, and why changing a storage schema requires preserving existing records rather than simply replacing them with empty data. I also understand that passing tests provides evidence for the behaviors tested, not proof that every feature is complete.
+
+
 
 ## Fellow: Andrew Otokpa
 
@@ -135,3 +332,46 @@ OK
 ***Related file/commit:*** Reporting test file and README testing instructions.
 
 ***What I can now explain without AI:*** I understand how Python discovers automated tests, what the -s, -p, and -v arguments do, and how to interpret passing and failing test results.
+
+### Interaction #5 - datetime
+
+***Problem:** I needed to learn how to represent UTC timestamps and calculate ticket deadlines.
+
+***My initial understanding:*** I knew how to get the current time, but I didn’t understand naive and timezone-aware datetimes. My first attempt used datetime.now() without a timezone.
+
+***Prompt to AI:*** what is naive and aware
+
+***Useful AI guidance:*** AI explained that aware datetimes include timezone information, timedelta represents a duration, and fixed starting times make tests predictable.
+
+***My independent experiment/test:*** I wrote a small program that created an aware UTC datetime and added 60 minutes. I then used a fixed starting time of 14 October 2026 at 10:00 UTC and predicted an 11:00 UTC result.
+
+***Verification source or result:*** ran my test and it past python3 -m unittest discover -s tests -p "test_sla.py" -v
+
+***Decision:** I accepted the guidance to pass the starting time into calculate_due_at instead of reading the current time inside it. This lets the same function work with real creation times and fixed test times.
+
+***Related file/commit:*** campusflow/sla.py, tests/test_sla.py
+
+***What I can now explain without AI:*** I can explain the difference between datetime and duration, why timezone information matters
+
+### Interaction #6 - unittest
+
+***Problem:** I needed to learn how to use Python’s unittest to verify my SLA deadline function.
+
+
+***My initial understanding:***I knew how to define a test class, but I wasn’t sure what inputs to pass or how to write the expected result. My first attempt passed 60 as the cycle start instead of a datetime.
+
+***Prompt to AI:*** “explain better”
+
+I asked this after being guided to write my first SLA test.
+
+***Useful AI guidance:*** AI explained three steps: prepare known inputs, call the function, and compare its actual result with an independently chosen expected value. It also explained how to use self.assertEqual.
+
+***My independent experiment/test:*** I wrote a critical-priority test using 14 October 2026 at 10:00 UTC as the starting time. I initially made the expected deadline equal to the starting time. After reviewing the requirement, I changed the expected deadline to 11:00 UTC and ran the test.
+
+***Verification source or result:*** I ran python3 -m unittest discover -s tests -p "test_sla.py"
+
+***Decision:** I accepted the advice to use fixed UTC inputs and explicit expected datetimes. This makes the tests repeatable and avoids copying the function’s calculation into the expected result.
+
+***Related file/commit:*** campusflow/sla.py, tests/test_sla.py 
+
+***What I can now explain without AI:*** I can explain what unittest is and how to use their basic assert such as asserEqual() etc.

@@ -8,22 +8,23 @@ from .sla import calculate_due_at, utc_time
 
 
 def apply_transition(ticket, event_type, actor, before, after, details, now):
-    ticket_backup = deepcopy(ticket)
-    events_backup = deepcopy(campus.events)
+    old_ticket = deepcopy(ticket)
+    old_events = deepcopy(campus.events)
 
     try:
-        ticket["status"] = after
-        ticket["updated_at"] = now.isoformat()
+        changes = {
+            "status": after,
+            "updated_at": now.isoformat(),
+        }
 
         if event_type == "REOPEN":
             deadline = calculate_due_at(ticket["priority"], now)
-            new_cycle = ticket["escalation_cycle"] + 1
+            cycle = ticket["escalation_cycle"] + 1
 
-            ticket["due_at"] = deadline.isoformat()
-            ticket["escalation_cycle"] = new_cycle
-            ticket["escalated_cycle"] = None
-
-            details = f"Ticket reopened. SLA cycle {new_cycle} started."
+            changes["due_at"] = deadline.isoformat()
+            changes["escalation_cycle"] = cycle
+            changes["escalated_cycle"] = None
+            details = f"Ticket reopened. SLA cycle {cycle} started."
 
         record_event(
             ticket_id=ticket["ID"],
@@ -35,23 +36,19 @@ def apply_transition(ticket, event_type, actor, before, after, details, now):
             now=now,
         )
 
-        expected_count = len(events_backup) + 1
-
-        if len(campus.events) != expected_count:
+        if len(campus.events) != len(old_events) + 1:
             raise ValueError("Recorder must append exactly one event.")
 
-        for position in range(len(events_backup)):
-            if campus.events[position] != events_backup[position]:
-                raise ValueError("Recorder changed existing history.")
+        if campus.events[:-1] != old_events:
+            raise ValueError("Recorder changed existing history.")
 
+        ticket.update(changes)
         storage.save_json(campus)
 
     except Exception as error:
         ticket.clear()
-        ticket.update(ticket_backup)
-
-        campus.events.clear()
-        campus.events.extend(events_backup)
+        ticket.update(old_ticket)
+        campus.events[:] = old_events
 
         if isinstance(error, (OSError, TypeError, ValueError, KeyError)):
             print(f"Transition failed; changes rolled back: {error}")
@@ -65,11 +62,7 @@ def apply_transition(ticket, event_type, actor, before, after, details, now):
 def WorkQueue():
     path = storage.FilePath
 
-    if not os.path.exists(path):
-        print("Error: Tickets file is empty or missing.")
-        return
-
-    if os.path.getsize(path) == 0:
+    if not os.path.exists(path) or os.path.getsize(path) == 0:
         print("Error: Tickets file is empty or missing.")
         return
 
@@ -86,20 +79,15 @@ def WorkQueue():
         "low": 3,
     }
 
-    open_tickets = []
-
-    for ticket in campus.tickets:
-        status = ticket["status"].strip().lower()
-
-        if status == "open":
-            open_tickets.append(ticket)
+    open_tickets = [
+        ticket for ticket in campus.tickets
+        if ticket["status"].strip().lower() == "open"
+    ]
 
     def queue_order(ticket):
         priority = ticket["priority"].strip().lower()
-        priority_number = priority_order[priority]
-        ticket_number = int(ticket["ID"][1:])
-
-        return priority_number, ticket_number
+        number = int(ticket["ID"][1:])
+        return priority_order[priority], number
 
     open_tickets.sort(key=queue_order)
 
@@ -116,7 +104,10 @@ def WorkQueue():
     for ticket in open_tickets:
         assignee = ticket.get("assigned_to")
 
-        if not assignee:
+        if (
+            not assignee
+            or str(assignee).strip().lower() in ("", "none")
+        ):
             assignee = "Unassigned"
         else:
             name = str(assignee).strip().lower()
@@ -166,13 +157,10 @@ def WorkFlow(now=None):
     if current_status == "open" and new_status == "in_progress":
         assignee = target.get("assigned_to")
 
-        if not assignee:
-            print("Error: Ticket has not been assigned.")
-            return
-
-        name = str(assignee).strip().lower()
-
-        if name == "" or name == "none":
+        if (
+            not assignee
+            or str(assignee).strip().lower() in ("", "none")
+        ):
             print("Error: Ticket has not been assigned.")
             return
 
@@ -208,15 +196,13 @@ def WorkFlow(now=None):
         print(f"Error: {error}")
         return
 
-    details = f"Status changed to {new_status}."
-
     success = apply_transition(
         target,
         event_type,
         actor,
         current_status,
         new_status,
-        details,
+        f"Status changed to {new_status}.",
         now,
     )
 

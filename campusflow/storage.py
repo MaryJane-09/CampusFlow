@@ -1,57 +1,57 @@
 import json
-from .show_ticket import CampusFlow
 import os
+
+from .show_ticket import CampusFlow
+from .validation import validate_data
 
 
 FilePath = "ticket.json"
 
-def load_json(campus_instance):
-    if not os.path.exists(FilePath) or os.path.getsize(FilePath) == 0:
-        campus_instance.tickets = []
-        campus_instance.events = []
-        return
 
+def load_json(campus: CampusFlow):
     try:
-        with open(FilePath, "r") as file:
+        with open(FilePath, "r", encoding="utf-8") as file:
             data = json.load(file)
-            
-        if isinstance(data, dict):
-            campus_instance.tickets = data.get("tickets", [])
-            campus_instance.events = data.get("events", [])
-        elif isinstance(data, list):
-            campus_instance.tickets = data
-            campus_instance.events = []
-        else:
-            raise ValueError("JSON root must be a dictionary or list object.")
-            
-    except json.JSONDecodeError:
-        raise ValueError("JSON file was corrupted.")
 
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            "Ticket file was not found. Current data was not changed."
+        ) from None
+
+    except json.JSONDecodeError:
+        raise ValueError(
+            "Ticket file is empty or corrupted. Current data was not changed."
+        ) from None
+
+    validate_data(data)
+
+    campus.tickets = data["tickets"]
+    campus.events = data["events"]
 
 
 def save_json(campus: CampusFlow):
-  target_filename = "ticket.json"
-  temp_filename = "ticket.json.tmp"
-
-  try:
-    output_data = {
+    data = {
         "schema_version": 2,
         "tickets": campus.tickets,
         "events": campus.events,
     }
 
-    with open(temp_filename, "w") as file:
-      json.dump(output_data, file, indent=4)
-      file.flush()
-      os.fsync(file.fileno())
+    validate_data(data)
 
-    os.replace(temp_filename, target_filename)
+    target_file = str(FilePath)
+    temp_file = target_file + ".tmp"
 
-  except (TypeError, OSError):
-    if os.path.exists(temp_filename):
-      try:
-        os.remove(temp_filename)
-      except OSError:
-        pass
+    try:
+        with open(temp_file, "w", encoding="utf-8") as file:
+            json.dump(data, file, indent=4, allow_nan=False)
+            file.flush()
+            os.fsync(file.fileno())
 
-    raise
+        os.replace(temp_file, target_file)
+
+    finally:
+        if os.path.exists(temp_file):
+            try:
+                os.remove(temp_file)
+            except OSError:
+                pass

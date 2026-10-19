@@ -62,58 +62,34 @@ def GenerateEventID(prefix="E"):
     return prefix + str(next_number).zfill(3)
 
 
-def record_event(
-    ticket_id,
-    event_type,
-    actor,
-    before_status,
-    after_status,
-    details,
-    *,
-    now=None,
-):
-    if not isinstance(actor, str):
-        raise ValueError("Operator name must be text.")
-
-    operator_name = actor.strip()
-
-    if operator_name == "":
+def record_event(ticket_id, event_type, actor, before_status, after_status, details, *, now=None,):
+    if not isinstance(actor, str) or not actor.strip():
         raise ValueError("Operator name cannot be empty.")
 
     if now is None:
         now = datetime.now(timezone.utc)
 
-    if not isinstance(now, datetime):
-        raise ValueError("Event time must be a datetime.")
-
-    if now.utcoffset() is None:
+    if (
+        not isinstance(now, datetime)
+        or now.tzinfo is None
+        or now.utcoffset() is None
+    ):
         raise ValueError("Event time must include a timezone.")
 
-    event_id = GenerateEventID()
-    event_time = now.astimezone(timezone.utc).isoformat()
-
     new_event = Event(
-        event_id=event_id,
+        event_id=GenerateEventID(),
         ticket_id=ticket_id,
         event_type=event_type,
-        actor=operator_name,
-        timestamp=event_time,
+        actor=actor.strip(),
+        timestamp=now.astimezone(timezone.utc).isoformat(),
         before_status=before_status,
         after_status=after_status,
         details=details,
     )
 
-    event_data = asdict(new_event)
-    campus.events.append(event_data)
-
-    return event_data
-
-
-def history_order(event):
-    event_time = datetime.fromisoformat(event["timestamp"])
-    event_number = int(event["event_id"][1:])
-
-    return event_time, event_number
+    event = asdict(new_event)
+    campus.events.append(event)
+    return event
 
 
 def show_history():

@@ -1,192 +1,95 @@
 import unittest
-from campusflow.sla import calculate_due_at, is_overdue, escalate_overdue
-from datetime import timezone, datetime
+from copy import deepcopy
+from datetime import datetime, timezone
 from unittest.mock import Mock
+from campusflow.sla import calculate_due_at, is_overdue, escalate_overdue
+
 
 class SLATest(unittest.TestCase):
+    def setUp(self):
+        self.start = datetime(2026, 10, 14, 10, tzinfo=timezone.utc)
+        self.now = datetime(2026, 10, 15, 12, 1, tzinfo=timezone.utc)
+        self.ticket = {
+            "ID": "T001", "status": "Open", "priority": "Critical",
+            "assigned_to": None, "due_at": "2026-10-15T12:00:00+00:00",
+            "escalation_cycle": 0, "escalated_cycle": None,
+        }
+        self.events = []
+
     def test_critical_due_at(self):
-        cycle_start = datetime(year=2026, month=10, day=14, hour=10, minute=0, tzinfo=timezone.utc)
-        expected_due_at = datetime(year=2026, month=10, day=14, hour=11, minute=0, tzinfo=timezone.utc)
-        sla = calculate_due_at('critical', cycle_start)
-        self.assertEqual(sla, expected_due_at)
+        self.assertEqual(calculate_due_at("critical", self.start), datetime(2026, 10, 14, 11, tzinfo=timezone.utc))
 
     def test_high_due_at(self):
-        cycle_start = datetime(year=2026, month=10, day=14, hour=10, minute=0, tzinfo=timezone.utc)
-        expected_due_at = datetime(year=2026, month=10, day=14, hour=14, minute=0, tzinfo=timezone.utc)
-        sla = calculate_due_at('high', cycle_start)
-        self.assertEqual(sla, expected_due_at)
+        self.assertEqual(calculate_due_at("high", self.start), datetime(2026, 10, 14, 14, tzinfo=timezone.utc))
 
     def test_medium_due_at(self):
-        cycle_start = datetime(year=2026, month=10, day=14, hour=10, minute=0, tzinfo=timezone.utc)
-        expected_due_at = datetime(year=2026, month=10, day=15, hour=10, minute=0, tzinfo=timezone.utc)
-        sla = calculate_due_at('medium', cycle_start)
-        self.assertEqual(sla, expected_due_at)
+        self.assertEqual(calculate_due_at("medium", self.start), datetime(2026, 10, 15, 10, tzinfo=timezone.utc))
 
     def test_low_due_at(self):
-        cycle_start = datetime(year=2026, month=10, day=14, hour=10, minute=0, tzinfo=timezone.utc)
-        expected_due_at = datetime(year=2026, month=10, day=16, hour=10, minute=0, tzinfo=timezone.utc)
-        sla = calculate_due_at('low', cycle_start)
-        self.assertEqual(sla, expected_due_at)
-
+        self.assertEqual(calculate_due_at("low", self.start), datetime(2026, 10, 16, 10, tzinfo=timezone.utc))
 
     def test_not_overdue_at_deadline(self):
-        ticket = {
-            "status": "open",
-            "due_at": "2026-10-15T12:00:00+00:00"
-        }
-    
-        now = datetime(year=2026, month=10, day=15, hour=12, minute=0, microsecond=0, tzinfo=timezone.utc)
-    
-        result = is_overdue(ticket, now)
-    
-        self.assertFalse(result)
+        self.assertFalse(is_overdue(self.ticket, self.now.replace(minute=0)))
 
     def test_overdue_after_deadline(self):
-        ticket = {
-            "status": "open",
-            "due_at": "2026-10-15T12:00:00+00:00"
-        }
-
-        now = datetime(year=2026, month=10, day=15, hour=12, minute=1, microsecond=0, tzinfo=timezone.utc)
-        result = is_overdue(ticket, now)
-        self.assertTrue(result)
+        self.assertTrue(is_overdue(self.ticket, self.now))
 
     def test_resolved_ticket_not_overdue(self):
-        ticket = {
-            "status": "Resolved",
-            "due_at": "2026-10-15T12:00:00+00:00"
-        }
+        self.ticket["status"] = "Resolved"
+        self.assertFalse(is_overdue(self.ticket, self.now))
 
-        now = datetime(year=2026, month=10, day=15, hour=12, minute=1, microsecond=0, tzinfo=timezone.utc)
-        result = is_overdue(ticket, now)
-        self.assertFalse(result)
+    def test_invalid_ticket_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "dictionary"):
+            is_overdue("not_a_dict", self.now)
 
     def test_already_escalated_ticket_is_unchanged(self):
-        ticket = {
-            "id": "T001",
-            "status": "Open",
-            "due_at": "2026-10-15T12:00:00+00:00",
-            "escalation_cycle": 0,
-            "escalated_cycle": 0,
-        }
-        tickets = [ticket]
-        events = []
-        original_ticket = ticket.copy()
-    
-        now = datetime(
-            year=2026, month=10, day=15,
-            hour=12, minute=1, tzinfo=timezone.utc,
-        )
-    
+        self.ticket["escalated_cycle"] = 0
+        before = deepcopy(self.ticket)
         recorder = Mock()
-
-        result = escalate_overdue(
-            tickets,
-            events,
-            now,
-            "Engineer A",
-            event_recorder=recorder,
-        )
-
+        result = escalate_overdue([self.ticket], self.events, self.now, "Engineer A", event_recorder=recorder)
+        self.assertEqual(result, {"newly_escalated": 0, "already_escalated": 1})
+        self.assertEqual(self.ticket, before)
+        self.assertEqual(self.events, [])
         recorder.assert_not_called()
-    
-        self.assertEqual(result["newly_escalated"], 0)
-        self.assertEqual(result["already_escalated"], 1)
-        self.assertEqual(tickets, [original_ticket])
-        self.assertEqual(events, [])
-
 
     def test_escalation_happens_once_per_cycle(self):
-        ticket = {
-            "id": "T001",
-            "status": "Open",
-            "priority": "Critical",
-            "assigned_to": None,
-            "due_at": "2026-10-15T12:00:00+00:00",
-            "escalation_cycle": 0,
-            "escalated_cycle": None,
-        }
-        events = []
-        original_ticket = ticket.copy()
-
-        now = datetime(
-            year=2026, month=10, day=15,
-            hour=12, minute=1, tzinfo=timezone.utc,
-        )
-
-        event = {
-            "event_id": "E001",
-            "ticket_id": "T001",
-            "event_type": "ESCALATE",
-            "actor": "Engineer A",
-            "timestamp": now.isoformat(),
-            "before_status": "Open",
-            "after_status": "Open",
-            "details": "Overdue escalation for SLA cycle 0",
-        }
-        recorder = Mock(return_value=event)
-
-        first_result = escalate_overdue(
-            [ticket], events, now, "Engineer A",
-            event_recorder=recorder,
-        )
-
-        self.assertEqual(
-            first_result,
-            {"newly_escalated": 1, "already_escalated": 0},
-        )
-        self.assertEqual(events, [event])
-
-        expected_ticket = original_ticket.copy()
-        expected_ticket["escalated_cycle"] = 0
-        self.assertEqual(ticket, expected_ticket)
-
-        second_result = escalate_overdue(
-            [ticket], events, now, "Engineer A",
-            event_recorder=recorder,
-        )
-
-        self.assertEqual(
-            second_result,
-            {"newly_escalated": 0, "already_escalated": 1},
-        )
-        self.assertEqual(events, [event])
-        self.assertEqual(ticket, expected_ticket)
+        before = deepcopy(self.ticket)
+        def append_event(**values):
+            event = {key: value for key, value in values.items() if key != "now"}
+            event["event_id"] = "E001"
+            event["timestamp"] = values["now"].isoformat()
+            self.events.append(event)
+            return event
+        recorder = Mock(side_effect=append_event)
+        first = escalate_overdue([self.ticket], self.events, self.now, "Engineer A", event_recorder=recorder)
+        self.assertEqual(first, {"newly_escalated": 1, "already_escalated": 0})
+        expected = deepcopy(before)
+        expected["escalated_cycle"] = 0
+        self.assertEqual(self.ticket, expected)
+        saved_events = deepcopy(self.events)
+        later = self.now.replace(hour=13)
+        second = escalate_overdue([self.ticket], self.events, later, "Engineer A", event_recorder=recorder)
+        self.assertEqual(second, {"newly_escalated": 0, "already_escalated": 1})
+        self.assertEqual(self.events, saved_events)
+        self.assertEqual(len(self.events), 1)
         recorder.assert_called_once_with(
-            events=events,
-            ticket_id="T001",
-            event_type="ESCALATE",
-            actor="Engineer A",
-            before_status="Open",
-            after_status="Open",
-            details="Overdue escalation for SLA cycle 0",
-            now=now,
+            ticket_id="T001", event_type="ESCALATE", actor="Engineer A",
+            before_status="Open", after_status="Open",
+            details="Overdue escalation for SLA cycle 0", now=self.now,
         )
 
     def test_recorder_failure_leaves_state_unchanged(self):
-        ticket = {
-            "id": "T001",
-            "status": "Open",
-            "due_at": "2026-10-15T12:00:00+00:00",
-            "escalation_cycle": 0,
-            "escalated_cycle": None,
-        }
-        events = []
-        original_ticket = ticket.copy()
-    
-        now = datetime(
-            year=2026, month=10, day=15,
-            hour=12, minute=1, tzinfo=timezone.utc,
-        )
-    
-        recorder = Mock(side_effect=RuntimeError("Recording failed"))
-    
+        before = deepcopy(self.ticket)
+        def fail(**values):
+            self.events.append({"partial": True})
+            raise RuntimeError("Recording failed")
+        recorder = Mock(side_effect=fail)
         with self.assertRaisesRegex(RuntimeError, "Recording failed"):
-            escalate_overdue(
-                [ticket], events, now, "Engineer A",
-                event_recorder=recorder,
-            )
-    
-        self.assertEqual(ticket, original_ticket)
-        self.assertEqual(events, [])
+            escalate_overdue([self.ticket], self.events, self.now, "Engineer A", event_recorder=recorder)
+        self.assertEqual(self.ticket, before)
+        self.assertEqual(self.events, [])
         recorder.assert_called_once()
+
+
+if __name__ == "__main__":
+    unittest.main()
