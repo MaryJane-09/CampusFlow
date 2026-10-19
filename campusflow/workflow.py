@@ -1,48 +1,82 @@
+from copy import deepcopy
+import os
+
+from . import storage
 from .show_ticket import campus
 from .history import record_event
-from .storage import load_json, save_json
-from copy import deepcopy
+from .sla import calculate_due_at, utc_time
 
 
-FilePath = "ticket.json"
-
-
-def apply_transition(ticket, event_type, actor, before, after, details):
-    previous_status = ticket.get("status")
-    previous_events = deepcopy(campus.events)
+def apply_transition(ticket, event_type, actor, before, after, details, now):
+    ticket_backup = deepcopy(ticket)
+    events_backup = deepcopy(campus.events)
 
     try:
         ticket["status"] = after
+        ticket["updated_at"] = now.isoformat()
+
+        if event_type == "REOPEN":
+            deadline = calculate_due_at(ticket["priority"], now)
+            new_cycle = ticket["escalation_cycle"] + 1
+
+            ticket["due_at"] = deadline.isoformat()
+            ticket["escalation_cycle"] = new_cycle
+            ticket["escalated_cycle"] = None
+
+            details = f"Ticket reopened. SLA cycle {new_cycle} started."
 
         record_event(
-            ticket.get("id", ticket.get("ID")),
-            event_type,
-            actor,
-            before,
-            after,
-            details,
+            ticket_id=ticket["ID"],
+            event_type=event_type,
+            actor=actor,
+            before_status=before,
+            after_status=after,
+            details=details,
+            now=now,
         )
 
-        save_json(campus)
+        expected_count = len(events_backup) + 1
 
-    except (OSError, TypeError, ValueError) as error:
-        ticket["status"] = previous_status
-        campus.events = previous_events
-        print(f"Transition failed; changes rolled back: {error}")
-        return False
+        if len(campus.events) != expected_count:
+            raise ValueError("Recorder must append exactly one event.")
+
+        for position in range(len(events_backup)):
+            if campus.events[position] != events_backup[position]:
+                raise ValueError("Recorder changed existing history.")
+
+        storage.save_json(campus)
+
+    except Exception as error:
+        ticket.clear()
+        ticket.update(ticket_backup)
+
+        campus.events.clear()
+        campus.events.extend(events_backup)
+
+        if isinstance(error, (OSError, TypeError, ValueError, KeyError)):
+            print(f"Transition failed; changes rolled back: {error}")
+            return False
+
+        raise
 
     return True
 
 
 def WorkQueue():
-    try:
-        load_json(campus)
-    except (ValueError, OSError) as error:
-        print(f"Unable to load work queue: {error}")
+    path = storage.FilePath
+
+    if not os.path.exists(path):
+        print("Error: Tickets file is empty or missing.")
         return
 
-    if not campus.tickets:
-        print("No tickets in the work queue.")
+    if os.path.getsize(path) == 0:
+        print("Error: Tickets file is empty or missing.")
+        return
+
+    try:
+        storage.load_json(campus)
+    except (ValueError, OSError) as error:
+        print(f"Could not load tickets: {error}")
         return
 
     priority_order = {
@@ -52,44 +86,56 @@ def WorkQueue():
         "low": 3,
     }
 
-    active_tickets = [
-        ticket for ticket in campus.tickets
-        if str(ticket.get("status", "")).lower().strip() in ("open", "in_progress")
-    ]
+    open_tickets = []
 
-    sorted_tickets = sorted(
-        active_tickets,
-        key=lambda ticket: (
-            priority_order.get(str(ticket.get("priority", "")).lower().strip(), 4),
-            int(str(ticket.get("id", ticket.get("ID", "T0")))[1:])
-        )
-    )
+    for ticket in campus.tickets:
+        status = ticket["status"].strip().lower()
 
-    if not sorted_tickets:
-        print("No active tickets in the work queue.")
+        if status == "open":
+            open_tickets.append(ticket)
+
+    def queue_order(ticket):
+        priority = ticket["priority"].strip().lower()
+        priority_number = priority_order[priority]
+        ticket_number = int(ticket["ID"][1:])
+
+        return priority_number, ticket_number
+
+    open_tickets.sort(key=queue_order)
+
+    if not open_tickets:
+        print("No open tickets in the work queue.")
         return
 
-    print(f"\n{'ID':<7} {'Title':<30} {'Priority':<13} {'Status':<17} {'Assigned To':<22}")
-    print("-" * 85)
-    for ticket in sorted_tickets:
+    print(
+        f"\n{'ID':<6} {'Title':<20} {'Priority':<10} "
+        f"{'Status':<12} {'Assigned To':<15}"
+    )
+    print("-" * 65)
+
+    for ticket in open_tickets:
         assignee = ticket.get("assigned_to")
 
-        if not assignee or assignee == "None":
+        if not assignee:
             assignee = "Unassigned"
+        else:
+            name = str(assignee).strip().lower()
+
+            if name == "" or name == "none":
+                assignee = "Unassigned"
 
         print(
-            f"{ticket.get('id', ticket.get('ID')):<7} "
-            f"{ticket.get('title'):<30} "
-            f"{ticket.get('priority', 'N/A'):<13} "
-            f"{ticket.get('status'):<17} "
-            f"{assignee:<22}"
+            f"{ticket['ID']:<6} "
+            f"{ticket['title']:<20} "
+            f"{ticket['priority']:<10} "
+            f"{ticket['status']:<12} "
+            f"{assignee:<15}"
         )
 
 
-
-def WorkFlow():
+def WorkFlow(now=None):
     try:
-        load_json(campus)
+        storage.load_json(campus)
     except (ValueError, OSError) as error:
         print(f"Could not load tickets: {error}")
         return
@@ -99,47 +145,44 @@ def WorkFlow():
         return
 
     ticket_id = input("Ticket ID: ").strip().upper()
-    target_ticket = None
+    target = None
 
     for ticket in campus.tickets:
-        current_id = str(
-            ticket.get("id", ticket.get("ID", ""))
-        ).strip().upper()
-
-        if current_id == ticket_id:
-            target_ticket = ticket
+        if ticket["ID"].upper() == ticket_id:
+            target = ticket
             break
 
-    if target_ticket is None:
+    if target is None:
         print("Error: No match found.")
         return
 
     new_status = input("Ticket Status: ").strip().lower()
-    current_status = str(
-        target_ticket.get("status", "")
-    ).strip().lower()
+    current_status = target["status"].strip().lower()
 
     if current_status == "open" and new_status == "open":
         print("Ticket is already open.")
         return
 
     if current_status == "open" and new_status == "in_progress":
-        assignee = target_ticket.get("assigned_to")
+        assignee = target.get("assigned_to")
 
-        if not assignee or str(assignee).strip().lower() == "none":
+        if not assignee:
+            print("Error: Ticket has not been assigned.")
+            return
+
+        name = str(assignee).strip().lower()
+
+        if name == "" or name == "none":
             print("Error: Ticket has not been assigned.")
             return
 
         event_type = "START"
-        details = "Ticket moved to in_progress."
 
     elif current_status == "in_progress" and new_status == "resolved":
         event_type = "RESOLVE"
-        details = "Ticket resolved."
 
     elif current_status == "resolved" and new_status == "open":
         event_type = "REOPEN"
-        details = "Ticket reopened."
 
     elif current_status == "open" and new_status == "resolved":
         print("Error: Must follow workflow.")
@@ -159,17 +202,27 @@ def WorkFlow():
         print("Error: Operator name cannot be empty.")
         return
 
+    try:
+        now = utc_time(now)
+    except ValueError as error:
+        print(f"Error: {error}")
+        return
+
+    details = f"Status changed to {new_status}."
+
     success = apply_transition(
-        target_ticket,
+        target,
         event_type,
         actor,
         current_status,
         new_status,
         details,
+        now,
     )
 
     if success:
         print(f"Ticket {ticket_id} changed to {new_status}.")
+
 
 if __name__ == "__main__":
     WorkFlow()
