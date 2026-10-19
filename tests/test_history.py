@@ -5,7 +5,7 @@ class TestHistory(unittest.TestCase):
 
     def test_record_and_show_history(self):
         class MockCampus:
-            tickets = [{"id": "T001"}]
+            tickets = [{"ID": "T001"}]
             events = []
 
         with patch.object(history, "campus", MockCampus()):

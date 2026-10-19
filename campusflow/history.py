@@ -1,7 +1,7 @@
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
-from .show_ticket import campus
 
+from .show_ticket import campus
 
 
 @dataclass
@@ -12,34 +12,54 @@ class Event:
     actor: str
     timestamp: str
     before_status: str | None
-    after_status: str                       
+    after_status: str
     details: str
 
 
 def GenerateEventID(prefix="E"):
-    
     numbers = []
+
     for event in campus.events:
-        events_id = event.get("event_id", "")
+        if not isinstance(event, dict):
+            raise ValueError("Each event must be a dictionary.")
 
-        if not events_id.startswith(prefix):
-            raise ValueError(
-            f"Database Corruption: Event ID '{events_id}' does not start with prefix '{prefix}'."
-        )
+        event_id = event.get("event_id")
 
-        numeric_part = events_id[len(prefix):]
+        if not isinstance(event_id, str):
+            raise ValueError("Event ID must be text.")
 
-        if numeric_part.isdigit() and len(numeric_part) == 3:
-            numbers.append(int(numeric_part))
-        else:
-            raise ValueError(
-            f"Database Corruption: Invalid numeric sequence in Event ID '{events_id}'."
-        )
+        if not event_id.startswith(prefix):
+            raise ValueError(f"Invalid event ID: {event_id}")
 
-    max_num = max(numbers) if numbers else 0
-    max_num += 1
+        number_text = event_id[len(prefix):]
 
-    return f"{prefix}{max_num:03d}"
+        if not number_text.isascii():
+            raise ValueError(f"Invalid event ID: {event_id}")
+
+        if not number_text.isdigit():
+            raise ValueError(f"Invalid event ID: {event_id}")
+
+        number = int(number_text)
+
+        if number < 1:
+            raise ValueError(f"Invalid event ID: {event_id}")
+
+        expected_id = prefix + str(number).zfill(3)
+
+        if event_id != expected_id:
+            raise ValueError(f"Invalid event ID format: {event_id}")
+
+        if number in numbers:
+            raise ValueError(f"Duplicate event ID: {event_id}")
+
+        numbers.append(number)
+
+    if numbers:
+        next_number = max(numbers) + 1
+    else:
+        next_number = 1
+
+    return prefix + str(next_number).zfill(3)
 
 
 def record_event(ticket_id, event_type, actor, before_status, after_status, details, *, now=None,):
@@ -73,69 +93,43 @@ def record_event(ticket_id, event_type, actor, before_status, after_status, deta
 
 
 def show_history():
-  ticket_id_input = input("Input Ticket ID to view history: ").upper().strip()
+    ticket_id = input("Input Ticket ID to view history: ").strip().upper()
 
-  ticket_exists = False
-  for ticket in campus.tickets:
-    current_id = str(ticket.get("id", ticket.get("ID", ""))).strip().upper()
-    if current_id == ticket_id_input:
-      ticket_exists = True
-      break
+    ticket_exists = False
 
-  if not ticket_exists:
-    print(f"Error: Ticket {ticket_id_input} not found.")
-    return
+    for ticket in campus.tickets:
+        if ticket["ID"].strip().upper() == ticket_id:
+            ticket_exists = True
+            break
 
-  matching_events = []
+    if not ticket_exists:
+        print(f"Error: Ticket {ticket_id} not found.")
+        return
 
-  for event in campus.events:
-    if isinstance(event, dict):
-      event_ticket_id = str(event.get("ticket_id", "")).strip().upper()
-    else:
-      event_ticket_id = str(getattr(event, "ticket_id", "")).strip().upper()
+    ticket_events = []
 
-    if event_ticket_id == ticket_id_input:
-      matching_events.append(event)
+    for event in campus.events:
+        event_ticket_id = event["ticket_id"].strip().upper()
 
-  if not matching_events:
-    print("No history logs or events found for this ticket.")
-    return
+        if event_ticket_id == ticket_id:
+            ticket_events.append(event)
 
-  matching_events.sort(
-      key=lambda e: (
-          e.get("timestamp", "")
-          if isinstance(e, dict)
-          else getattr(e, "timestamp", "")
-      )
-  )
+    if not ticket_events:
+        print("No history logs or events found for this ticket.")
+        return
 
-  print(f"\n--- Chronological History for Ticket: {ticket_id_input} ---")
+    ticket_events.sort(key=history_order)
 
-  for event in matching_events:
-    if isinstance(event, dict):
-      e_id = event.get("event_id")
-      e_type = event.get("event_type")
-      e_actor = event.get("actor")
-      e_time = event.get("timestamp")
-      e_before = event.get("before_status")
-      e_after = event.get("after_status")
-      e_details = event.get("details")
-    else:
-      e_id = getattr(event, "event_id", "")
-      e_type = getattr(event, "event_type", "")
-      e_actor = getattr(event, "actor", "")
-      e_time = getattr(event, "timestamp", "")
-      e_before = getattr(event, "before_status", "None")
-      e_after = getattr(event, "after_status", "")
-      e_details = getattr(event, "details", "")
+    print(f"\n--- Chronological History for Ticket: {ticket_id} ---")
 
-    before_str = "None" if e_before is None else str(e_before)
-    after_str = "None" if e_after is None else str(e_after)
+    for event in ticket_events:
+        old_status = event["before_status"]
+        new_status = event["after_status"]
 
-    print(f"\nEvent ID:     {e_id}")
-    print(f"Action:       {e_type}")
-    print(f"Operator:     {e_actor}")
-    print(f"Timestamp:    {e_time}")
-    print(f"Status:       {before_str} → {after_str}")
-    print(f"Details:      {e_details}")
-    print("-" * 45)
+        print(f"\nEvent ID:     {event['event_id']}")
+        print(f"Action:       {event['event_type']}")
+        print(f"Operator:     {event['actor']}")
+        print(f"Timestamp:    {event['timestamp']}")
+        print(f"Status:       {old_status} → {new_status}")
+        print(f"Details:      {event['details']}")
+        print("-" * 45)

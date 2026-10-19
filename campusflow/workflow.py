@@ -109,6 +109,11 @@ def WorkQueue():
             or str(assignee).strip().lower() in ("", "none")
         ):
             assignee = "Unassigned"
+        else:
+            name = str(assignee).strip().lower()
+
+            if name == "" or name == "none":
+                assignee = "Unassigned"
 
         print(
             f"{ticket['ID']:<6} "
