@@ -91,6 +91,11 @@ def record_event(ticket_id, event_type, actor, before_status, after_status, deta
     campus.events.append(event)
     return event
 
+def history_order(event):
+    event_time = datetime.fromisoformat(event["timestamp"])
+    event_number = int(event["event_id"][1:])
+
+    return event_time, event_number
 
 def show_history():
     ticket_id = input("Input Ticket ID to view history: ").strip().upper()
